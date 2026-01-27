@@ -58,6 +58,9 @@ export async function updateSystemSettings(data: Record<string, string>) {
   try {
     db.transaction((tx) => {
       for (const [key, value] of Object.entries(data)) {
+        // 过滤掉密码哈希字段，不允许直接更新
+        if (key === "admin_password_hash") continue;
+        
         tx.update(settings)
           .set({ value, updatedAt: new Date() })
           .where(eq(settings.key, key))
@@ -68,6 +71,38 @@ export async function updateSystemSettings(data: Record<string, string>) {
   } catch (error) {
     console.error("Update settings error:", error);
     return { success: false, message: "更新失败" };
+  }
+}
+
+export async function changeAdminPassword(currentPassword: string, newPassword: string) {
+  const session = await getSession();
+  if (!session) return { success: false, message: "未授权" };
+
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, message: "新密码至少需要6个字符" };
+  }
+
+  try {
+    const crypto = await import("crypto");
+    const sysSettings = await getSystemSettings();
+    
+    // 验证当前密码
+    const currentHash = crypto.createHash("sha256").update(currentPassword).digest("hex");
+    if (currentHash !== sysSettings.admin_password_hash) {
+      return { success: false, message: "当前密码错误" };
+    }
+
+    // 更新为新密码
+    const newHash = crypto.createHash("sha256").update(newPassword).digest("hex");
+    await db.update(settings)
+      .set({ value: newHash, updatedAt: new Date() })
+      .where(eq(settings.key, "admin_password_hash"))
+      .run();
+
+    return { success: true, message: "密码修改成功" };
+  } catch (error) {
+    console.error("Change password error:", error);
+    return { success: false, message: "密码修改失败" };
   }
 }
 
@@ -86,8 +121,11 @@ export async function adminLogin(password: string, captcha: string) {
     return { success: false, message: "验证码错误" };
   }
 
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-  if (password !== adminPassword) {
+  const sysSettings = await getSystemSettings();
+  const crypto = await import("crypto");
+  const hashedPassword = crypto.createHash("sha256").update(password).digest("hex");
+  
+  if (hashedPassword !== sysSettings.admin_password_hash) {
     return { success: false, message: "密码错误" };
   }
 

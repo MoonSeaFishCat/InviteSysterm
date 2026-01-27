@@ -18,14 +18,19 @@ import {
   ShieldAlert,
   Save,
   Loader2,
+  Key,
 } from "lucide-react";
-import { getSystemSettings, updateSystemSettings } from "../../../lib/actions";
+import { getSystemSettings, updateSystemSettings, changeAdminPassword } from "../../../lib/actions";
 import { toast, Toaster } from "react-hot-toast";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -62,6 +67,40 @@ export default function SettingsPage() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("请填写完整的密码信息");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error("新密码至少需要6个字符");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await changeAdminPassword(currentPassword, newPassword);
+      if (res.success) {
+        toast.success(res.message);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        toast.error(res.message);
+      }
+    } catch (error) {
+      toast.error("密码修改失败");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -90,6 +129,61 @@ export default function SettingsPage() {
       </div>
 
       <Tabs aria-label="Settings Options" color="primary" variant="underlined">
+        <Tab
+          key="security"
+          title={
+            <div className="flex items-center gap-2">
+              <Key size={18} />
+              <span>安全设置</span>
+            </div>
+          }
+        >
+          <Card className="mt-4 border-none shadow-sm">
+            <CardHeader>
+              <h3 className="text-lg font-semibold">修改管理员密码</h3>
+            </CardHeader>
+            <Divider />
+            <CardBody className="gap-4 py-6">
+              <Input
+                label="当前密码"
+                type="password"
+                placeholder="请输入当前密码"
+                value={currentPassword}
+                onValueChange={setCurrentPassword}
+                variant="bordered"
+              />
+              <Input
+                label="新密码"
+                type="password"
+                placeholder="请输入新密码（至少6位）"
+                value={newPassword}
+                onValueChange={setNewPassword}
+                variant="bordered"
+              />
+              <Input
+                label="确认新密码"
+                type="password"
+                placeholder="请再次输入新密码"
+                value={confirmPassword}
+                onValueChange={setConfirmPassword}
+                variant="bordered"
+              />
+              <Button
+                color="primary"
+                onPress={handleChangePassword}
+                isLoading={changingPassword}
+                startContent={!changingPassword && <Key size={18} />}
+                className="bg-gradient-to-tr from-blue-500 to-indigo-500 text-white shadow-lg w-full"
+              >
+                修改密码
+              </Button>
+              <p className="text-xs text-gray-400">
+                为了您的账户安全，建议定期更换密码。
+              </p>
+            </CardBody>
+          </Card>
+        </Tab>
+
         <Tab
           key="smtp"
           title={

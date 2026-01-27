@@ -51,6 +51,10 @@ async function init() {
   `);
 
   // Initialize default settings if not exists
+  const crypto = await import("crypto");
+  const defaultAdminPassword = process.env.ADMIN_PASSWORD || "admin123";
+  const hashedPassword = crypto.createHash("sha256").update(defaultAdminPassword).digest("hex");
+  
   const defaultSettings = [
     { key: "smtp_host", value: process.env.SMTP_HOST || "", description: "SMTP 服务器地址" },
     { key: "smtp_port", value: process.env.SMTP_PORT || "465", description: "SMTP 端口" },
@@ -61,6 +65,7 @@ async function init() {
     { key: "max_applications_per_device", value: "1", description: "每个设备最大申请数" },
     { key: "max_applications_per_email", value: "1", description: "每个邮箱最大申请数" },
     { key: "application_open", value: "true", description: "是否开放申请" },
+    { key: "admin_password_hash", value: hashedPassword, description: "管理员密码哈希" },
   ];
 
   for (const setting of defaultSettings) {
