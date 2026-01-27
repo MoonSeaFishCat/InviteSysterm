@@ -154,6 +154,25 @@ export default function SettingsPage() {
         >
           <Card className="mt-4 border-none shadow-sm">
             <CardHeader className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">申请开关</h3>
+              <Switch
+                isSelected={settings.application_open === "true"}
+                onValueChange={(v) => updateField("application_open", v ? "true" : "false")}
+                color="success"
+              >
+                开放申请
+              </Switch>
+            </CardHeader>
+            <Divider />
+            <CardBody className="py-4">
+              <p className="text-sm text-gray-500">
+                关闭后，用户将无法提交新的申请。适用于暂停接收申请的场景。
+              </p>
+            </CardBody>
+          </Card>
+
+          <Card className="mt-4 border-none shadow-sm">
+            <CardHeader className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">风控策略</h3>
               <Switch
                 isSelected={settings.risk_control_enabled === "true"}

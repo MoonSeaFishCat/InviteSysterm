@@ -107,6 +107,11 @@ export async function sendVerificationCode(email: string) {
   // Get system settings
   const sysSettings = await getSystemSettings();
 
+  // 0. Check if application is open
+  if (sysSettings.application_open === "false") {
+    return { success: false, message: "申请通道暂未开放，请稍后再试" };
+  }
+
   // 1. Check Whitelist
   const whitelist = sysSettings.email_whitelist?.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
   if (whitelist && whitelist.length > 0) {
@@ -167,6 +172,11 @@ export async function submitApplication(encryptedData: string, fingerprint: stri
   const ip = headerList.get("x-forwarded-for") || "unknown";
   
   const sysSettings = await getSystemSettings();
+
+  // 1.5. Check if application is open
+  if (sysSettings.application_open === "false") {
+    return { success: false, message: "申请通道暂未开放，请稍后再试" };
+  }
 
   // 2. Verify code
   const storedCode = await db
@@ -348,12 +358,16 @@ export async function getStats() {
   const rejected = allApps.filter(a => a.status === "rejected").length;
   const processed = allApps.filter(a => a.status !== "pending").length;
   
+  const sysSettings = await getSystemSettings();
+  const isApplicationOpen = sysSettings.application_open !== "false";
+  
   return {
     total: allApps.length,
     pending,
     approved,
     rejected,
-    processed
+    processed,
+    isApplicationOpen
   };
 }
 

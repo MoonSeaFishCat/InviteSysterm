@@ -60,6 +60,7 @@ async function init() {
     { key: "risk_control_enabled", value: "true", description: "是否开启风控" },
     { key: "max_applications_per_device", value: "1", description: "每个设备最大申请数" },
     { key: "max_applications_per_email", value: "1", description: "每个邮箱最大申请数" },
+    { key: "application_open", value: "true", description: "是否开放申请" },
   ];
 
   for (const setting of defaultSettings) {

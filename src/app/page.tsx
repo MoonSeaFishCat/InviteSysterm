@@ -223,7 +223,30 @@ export default function Home() {
           </CardHeader>
           <Divider />
           <CardBody className="p-6">
-            {statusInfo?.hasApproved ? (
+            {!stats?.isApplicationOpen ? (
+              <div className="py-10 flex flex-col items-center text-center space-y-6 animate-in fade-in zoom-in duration-500">
+                <div className="relative">
+                  <div className="absolute -inset-4 bg-gray-100 rounded-full animate-pulse opacity-50"></div>
+                  <ShieldAlert className="w-16 h-16 text-gray-400 relative z-10" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold text-gray-700">申请通道暂未开放</h2>
+                  <p className="text-gray-500 max-w-sm mx-auto">
+                    管理员已暂时关闭申请通道，请稍后再来尝试吧~
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <Button 
+                    variant="flat" 
+                    color="default" 
+                    className="bg-gray-50 text-gray-600 font-medium"
+                    startContent={<Clock className="w-4 h-4" />}
+                  >
+                    请耐心等待开放
+                  </Button>
+                </div>
+              </div>
+            ) : statusInfo?.hasApproved ? (
               <div className="py-10 flex flex-col items-center text-center space-y-6 animate-in fade-in zoom-in duration-500">
                 <div className="relative">
                   <div className="absolute -inset-4 bg-green-100 rounded-full animate-pulse opacity-50"></div>
@@ -288,7 +311,7 @@ export default function Home() {
                       className="h-[56px] min-w-[120px] bg-pink-100 text-pink-500 font-medium hover:bg-pink-200 transition-colors"
                       onClick={handleSendCode}
                       isLoading={sendingCode}
-                      disabled={countdown > 0}
+                      disabled={countdown > 0 || !stats?.isApplicationOpen}
                     >
                       {countdown > 0 ? `${countdown}s` : "获取验证码"}
                     </Button>
@@ -323,6 +346,7 @@ export default function Home() {
                   className="w-full h-12 text-lg font-bold bg-gradient-to-r from-pink-400 to-rose-400 text-white shadow-lg shadow-pink-200/50 hover:shadow-pink-300/50 transition-all active:scale-95"
                   onPress={handleSubmit}
                   isLoading={loading || powStatus === "solving"}
+                  isDisabled={!stats?.isApplicationOpen}
                   startContent={powStatus === "solving" ? null : <Send size={20} />}
                 >
                   {powStatus === "solving" ? "正在进行安全验证..." : "提交申请"}
