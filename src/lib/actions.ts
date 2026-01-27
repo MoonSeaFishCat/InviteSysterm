@@ -56,17 +56,16 @@ export async function updateSystemSettings(data: Record<string, string>) {
   if (!session) return { success: false, message: "未授权" };
 
   try {
-    db.transaction((tx) => {
-      for (const [key, value] of Object.entries(data)) {
-        // 过滤掉密码哈希字段，不允许直接更新
-        if (key === "admin_password_hash") continue;
-        
-        tx.update(settings)
-          .set({ value, updatedAt: new Date() })
-          .where(eq(settings.key, key))
-          .run();
-      }
-    });
+    // libsql 需要逐个执行更新
+    for (const [key, value] of Object.entries(data)) {
+      // 过滤掉密码哈希字段，不允许直接更新
+      if (key === "admin_password_hash") continue;
+      
+      await db.update(settings)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(settings.key, key))
+        .run();
+    }
     return { success: true, message: "设置已更新" };
   } catch (error) {
     console.error("Update settings error:", error);
@@ -306,24 +305,24 @@ export async function reviewApplication(id: number, status: "approved" | "reject
 
     const email = app[0].email;
 
-    db.transaction((tx) => {
-      tx.update(applications)
-        .set({ 
-          status, 
-          adminNote: data.note, 
-          updatedAt: new Date() 
-        })
-        .where(eq(applications.id, id))
-        .run();
-      
-      if (status === "approved" && data.code) {
-        tx.insert(invitationCodes).values({
-          code: data.code,
-          isUsed: true,
-          applicationId: id
-        }).onConflictDoNothing().run();
-      }
-    });
+    // 更新申请状态
+    await db.update(applications)
+      .set({ 
+        status, 
+        adminNote: data.note, 
+        updatedAt: new Date() 
+      })
+      .where(eq(applications.id, id))
+      .run();
+    
+    // 如果通过，插入邀请码
+    if (status === "approved" && data.code) {
+      await db.insert(invitationCodes).values({
+        code: data.code,
+        isUsed: true,
+        applicationId: id
+      }).onConflictDoNothing().run();
+    }
 
     // Send Email
     const sysSettings = await getSystemSettings();
