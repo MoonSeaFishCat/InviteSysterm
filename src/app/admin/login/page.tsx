@@ -10,7 +10,6 @@ import {
   Divider 
 } from "@heroui/react";
 import { Lock, ShieldCheck, RefreshCcw } from "lucide-react";
-import { adminLogin, getCaptcha } from "../../../lib/actions";
 import { toast, Toaster } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
@@ -22,8 +21,9 @@ export default function LoginPage() {
   const router = useRouter();
 
   const refreshCaptcha = async () => {
-    const q = await getCaptcha();
-    setCaptchaQuestion(q);
+    const res = await fetch("/api/captcha");
+    const data = await res.json();
+    setCaptchaQuestion(data.question);
   };
 
   useEffect(() => {
@@ -36,14 +36,21 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    const res = await adminLogin(password, captchaInput);
+    
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password, captcha: captchaInput }),
+    });
+    
+    const data = await res.json();
     setLoading(false);
     
-    if (res.success) {
+    if (data.success) {
       toast.success("登录成功");
       router.push("/admin");
     } else {
-      toast.error(res.message || "登录失败");
+      toast.error(data.message || "登录失败");
       refreshCaptcha();
       setCaptchaInput("");
     }

@@ -2,14 +2,13 @@
 
 import { Button } from "@heroui/react";
 import { LogOut } from "lucide-react";
-import { adminLogout } from "../lib/actions";
 import { useRouter } from "next/navigation";
 
 export default function LogoutButton() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await adminLogout();
+    await fetch("/api/admin/logout", { method: "POST" });
     router.push("/admin/login");
     router.refresh();
   };

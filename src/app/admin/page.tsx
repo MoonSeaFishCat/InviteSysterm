@@ -35,7 +35,6 @@ import {
   Search,
   Heart
 } from "lucide-react";
-import { getApplications, reviewApplication, getStats } from "../../lib/actions";
 import { toast, Toaster } from "react-hot-toast";
 
 export default function AdminPage() {
@@ -54,10 +53,12 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [appsData, statsData] = await Promise.all([
-      getApplications(),
-      getStats()
+    const [appsRes, statsRes] = await Promise.all([
+      fetch("/api/admin/applications"),
+      fetch("/api/stats")
     ]);
+    const appsData = await appsRes.json();
+    const statsData = await statsRes.json();
     setApps(appsData);
     setStats(statsData);
     setLoading(false);
@@ -82,18 +83,27 @@ export default function AdminPage() {
     }
     
     setSubmitting(true);
-    const res = await reviewApplication(selectedApp.id, reviewStatus, {
-      code: manualCode,
-      note: adminNote
+    const res = await fetch("/api/admin/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        appId: selectedApp.id,
+        status: reviewStatus,
+        data: {
+          code: manualCode,
+          note: adminNote
+        }
+      }),
     });
+    const data = await res.json();
     setSubmitting(false);
 
-    if (res.success) {
+    if (data.success) {
       toast.success("审核成功，已发送邮件通知");
       onClose();
       fetchData();
     } else {
-      toast.error(res.message || "审核操作失败");
+      toast.error(data.message || "审核操作失败");
     }
   };
 

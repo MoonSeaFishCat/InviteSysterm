@@ -17,7 +17,6 @@ import {
   useDisclosure,
 } from "@heroui/react";
 import { Mail, MessageSquare, ShieldCheck, Heart, Send, ShieldAlert, Cpu, Clock, CheckCircle2, Loader2, Info } from "lucide-react";
-import { sendVerificationCode, submitApplication, getSecurityChallenge, getStats, checkApplicationStatus } from "../lib/actions";
 import { toast, Toaster } from "react-hot-toast";
 import { getDeviceFingerprint, StarMoonSecurity } from "../lib/security";
 
@@ -36,14 +35,23 @@ export default function Home() {
 
   useEffect(() => {
     async function init() {
-      const [fp, statsData] = await Promise.all([
-        getDeviceFingerprint(),
-        getStats()
-      ]);
+      const fp = await getDeviceFingerprint();
       setFingerprint(fp);
+      
+      const [statsRes, statusRes] = await Promise.all([
+        fetch("/api/stats"),
+        fetch("/api/application/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fingerprint: fp }),
+        }),
+      ]);
+      
+      const statsData = await statsRes.json();
+      const statusData = await statusRes.json();
+      
       setStats(statsData);
-      const res = await checkApplicationStatus(fp);
-      setStatusInfo({ hasPending: res.hasPending, hasApproved: res.hasApproved });
+      setStatusInfo({ hasPending: statusData.hasPending, hasApproved: statusData.hasApproved });
     }
     init();
   }, []);
@@ -61,13 +69,20 @@ export default function Home() {
       return;
     }
     setSendingCode(true);
-    const res = await sendVerificationCode(email);
+    
+    const res = await fetch("/api/verification-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    
     setSendingCode(false);
-    if (res.success) {
-      toast.success(res.message);
+    if (data.success) {
+      toast.success(data.message);
       setCountdown(60);
     } else {
-      toast.error(res.message);
+      toast.error(data.message);
     }
   };
 
@@ -82,7 +97,8 @@ export default function Home() {
     try {
       // 1. 获取 PoW 挑战
       setPowStatus("solving");
-      const challenge = await getSecurityChallenge();
+      const challengeRes = await fetch("/api/security-challenge");
+      const challenge = await challengeRes.json();
       
       // 2. 解决 PoW
       const nonce = await StarMoonSecurity.solveChallenge(challenge.salt, challenge.difficulty);
@@ -96,7 +112,12 @@ export default function Home() {
       );
 
       // 4. 提交
-      const res = await submitApplication(encrypted, fingerprint, nonce);
+      const submitRes = await fetch("/api/application/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ encrypted, fingerprint, nonce }),
+      });
+      const res = await submitRes.json();
       
       if (res.success) {
         onOpen(); // 打开成功弹窗
@@ -105,14 +126,15 @@ export default function Home() {
         setCode("");
         setReason("");
         // 刷新统计
-        const newStats = await getStats();
+        const statsRes = await fetch("/api/stats");
+        const newStats = await statsRes.json();
         setStats(newStats);
       } else {
         toast.error(res.message);
       }
     } catch (error) {
       console.error("Submit error:", error);
-      toast.error("提交失败，请重试");
+      toast.error("提交失败,请重试");
     } finally {
       setLoading(false);
       setPowStatus("idle");

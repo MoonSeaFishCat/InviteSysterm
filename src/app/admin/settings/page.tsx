@@ -20,7 +20,6 @@ import {
   Loader2,
   Key,
 } from "lucide-react";
-import { getSystemSettings, updateSystemSettings, changeAdminPassword } from "../../../lib/actions";
 import { toast, Toaster } from "react-hot-toast";
 
 export default function SettingsPage() {
@@ -38,7 +37,8 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const data = await getSystemSettings();
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json();
       setSettings(data);
     } catch (error) {
       toast.error("加载设置失败");
@@ -50,11 +50,16 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await updateSystemSettings(settings);
-      if (res.success) {
-        toast.success(res.message);
+      const res = await fetch("/api/admin/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
       } else {
-        toast.error(res.message);
+        toast.error(data.message);
       }
     } catch (error) {
       toast.error("保存失败");
@@ -85,14 +90,19 @@ export default function SettingsPage() {
 
     setChangingPassword(true);
     try {
-      const res = await changeAdminPassword(currentPassword, newPassword);
-      if (res.success) {
-        toast.success(res.message);
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
       } else {
-        toast.error(res.message);
+        toast.error(data.message);
       }
     } catch (error) {
       toast.error("密码修改失败");
