@@ -4,7 +4,7 @@ import { jwtVerify } from "jose";
 
 const SECRET = new TextEncoder().encode(process.env.ADMIN_SECRET || "l-invite-secret-key-12345");
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 规范化 x-forwarded-host 请求头，去除端口号以匹配 origin
