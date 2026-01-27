@@ -21,7 +21,6 @@ import {
   CheckCircle2, 
   XCircle 
 } from "lucide-react";
-import { getApplications } from "../../../lib/actions";
 import { Toaster } from "react-hot-toast";
 
 export default function LogsPage() {
@@ -33,7 +32,8 @@ export default function LogsPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const data = await getApplications();
+    const res = await fetch("/api/admin/applications");
+    const data = await res.json();
     setApps(data);
     setLoading(false);
   };
