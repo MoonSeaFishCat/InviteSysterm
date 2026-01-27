@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@heroui/react": "^2.8.7",
-    "better-sqlite3": "^12.6.2",
+    "@libsql/client": "^0.17.0",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.1",
     "framer-motion": "^12.29.0",
@@ -27,7 +27,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.5",
     "@types/react": "^19",

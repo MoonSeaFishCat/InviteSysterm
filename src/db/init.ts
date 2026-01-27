@@ -5,7 +5,7 @@ async function init() {
   console.log("Initializing database...");
   
   // Create tables manually if not using migrations for simplicity
-  db.run(sql`
+  await db.run(sql`
     CREATE TABLE IF NOT EXISTS applications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL,
@@ -19,7 +19,7 @@ async function init() {
     )
   `);
 
-  db.run(sql`
+  await db.run(sql`
     CREATE TABLE IF NOT EXISTS verification_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL,
@@ -29,7 +29,7 @@ async function init() {
     )
   `);
 
-  db.run(sql`
+  await db.run(sql`
     CREATE TABLE IF NOT EXISTS invitation_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT NOT NULL UNIQUE,
@@ -40,7 +40,7 @@ async function init() {
     )
   `);
 
-  db.run(sql`
+  await db.run(sql`
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       key TEXT NOT NULL UNIQUE,
@@ -69,7 +69,7 @@ async function init() {
   ];
 
   for (const setting of defaultSettings) {
-    db.run(sql`
+    await db.run(sql`
       INSERT OR IGNORE INTO settings (key, value, description)
       VALUES (${setting.key}, ${setting.value}, ${setting.description})
     `);
