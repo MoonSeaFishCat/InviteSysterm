@@ -22,13 +22,22 @@ func main() {
 	// 加载配置
 	config.LoadConfig()
 
+	// 设置 Gin 模式
+	if config.AppConfig.GinMode == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	// 初始化数据库
 	if err := database.InitDB(config.AppConfig.DBPath); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
 	// 创建 Gin 引擎
-	r := gin.Default()
+	r := gin.New() // 使用 New 而不是 Default，避免重复注册中间件
+	r.Use(gin.Logger(), gin.Recovery())
+
+	// 设置信任代理（解决警告）
+	r.SetTrustedProxies(nil)
 
 	// CORS 配置
 	r.Use(cors.New(cors.Config{
@@ -84,6 +93,9 @@ func main() {
 			}
 		}
 	}
+
+	// 启动服务器之前设置静态文件服务
+	ServeStatic(r)
 
 	// 启动服务器
 	addr := ":" + config.AppConfig.Port

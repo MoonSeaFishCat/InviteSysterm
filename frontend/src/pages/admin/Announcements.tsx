@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { 
-  Button, Card, CardBody, CardHeader, Divider, Input, Spinner, 
+  Button, Card, CardBody, Spinner, 
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Switch, Textarea, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure
 } from "@heroui/react";
-import { FaBullhorn, FaPlus, FaTrash, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { FaBullhorn, FaPlus, FaTrash } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
