@@ -1,0 +1,6 @@
+/* 移除默认的居中和限制宽度样式，由 Layout.tsx 处理布局 */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}

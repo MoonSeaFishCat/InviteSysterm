@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply min-h-screen m-0 font-sans antialiased;
+    color: hsl(var(--heroui-foreground));
+    background-color: hsl(var(--heroui-background));
+  }
+}

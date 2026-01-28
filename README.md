@@ -1,67 +1,48 @@
-# L站邀请码分发系统 (Healing Invite System)
+# 小汐の邀请码申请系统
 
-一款基于 Next.js + HeroUI 的温馨治愈系邀请码申请与分发系统。专为社区邀请制设计，集成了高强度的安全防护与风控逻辑。
+一个简洁、安全且美观的邀请码申请与分发系统。
 
-## ✨ 特性
+## 项目简介
 
-- **🎨 温馨治愈 UI**: 采用柔和的配色方案与模糊背景设计，提供宁静的视觉体验。
-- **🛡️ 星月御安全 (Star-Moon Shield Security)**:
-  - **7星级魔改加密**: 自研多轮异或、位移与置换混淆算法，API 传输全加密。
-  - **动态 PoW 校验**: 提交申请需完成 SHA-256 算力挑战，有效阻断自动化脚本。
-  - **深度设备指纹**: 集成 Canvas、WebGL、Audio、Fonts 等多维硬件特征采集，实现精准风控。
-- **⚙️ 管理员后台**:
-  - **仪表盘**: 实时统计申请状态。
-  - **审核管理**: 支持手动输入邀请码，自动发送邮件通知（通过/拒绝）。
-  - **系统设置**: 动态配置 SMTP 邮件服务、邮箱白名单及风控阈值。
-- **📦 极简部署**: 使用 SQLite 纯 JS 驱动（Better-SQLite3），无需复杂数据库配置。
+欢迎来到小汐的邀请码申请系统！本项目旨在为私有社区提供一个自动化的邀请码申请流程。
 
-## 🚀 技术栈
+> **提示：** 欢迎来到小汐的邀请码申请系统，请认真填写您的申请理由，我们将用心审核每一份申请。  
+> PS：小汐也不知道项目会运行多久 一切随缘（确信）大概率应该是小汐跌出三级？
 
-- **Frontend**: Next.js 15 (App Router), HeroUI (NextUI), Tailwind CSS, Lucide React
-- **Backend**: Next.js Server Actions, Drizzle ORM
-- **Database**: SQLite (via `better-sqlite3`)
-- **Security**: Star-Moon Shield (Custom PoW + Encryption)
-- **Email**: Nodemailer
+## 功能特点
 
-## 🛠️ 快速开始
+- **响应式 UI**：基于 React + HeroUI + Tailwind CSS 构建，支持暗黑模式，极致的动效体验。
+- **安全保障**：
+  - **人机验证 (Captcha)**：防止自动化脚本攻击。
+  - **星月御安全**：集成 Payload 加密传输与设备指纹校验，防止暴力破解与重放攻击。
+  - **邮箱验证**：通过 SMTP 发送验证码，确保用户真实性。
+  - **风控系统**：支持单设备/单邮箱申请上限配置。
+- **管理端**：
+  - **申请管理**：集中的详情展示与快速审核流程。
+  - **系统公告**：支持发布、隐藏与删除全站公告。
+  - **配置中心**：动态修改站点名称、SMTP 服务、白名单、注册审核开关等。
+  - **账户管理**：支持修改管理员用户名与密码，增强安全性。
 
-1. **克隆项目**:
-   ```bash
-   git clone <repository-url>
-   cd l-invite
-   ```
+## 技术栈
 
-2. **安装依赖**:
-   ```bash
-   npm install
-   ```
+- **前端**：React 18, Vite, HeroUI (NextUI), Tailwind CSS, React Icons, Framer Motion.
+- **后端**：Go, Gin Framework, SQLite (GORM), JWT Authentication.
+- **安全**：AES + Nonce + Device Fingerprint (StarMoonSecurity).
 
-3. **配置环境变量**:
-   在项目根目录创建 `.env` 文件：
-   ```env
-   ADMIN_PASSWORD=your_admin_password
-   NEXT_PUBLIC_SECURITY_KEY=your_random_security_key
-   ```
+## 快速开始
 
-4. **初始化数据库**:
-   ```bash
-   npm run db:init
-   ```
+### 后端 (Go)
 
-5. **启动开发服务器**:
-   ```bash
-   npm run dev
-   ```
+1. 进入 `backend` 目录。
+2. 复制 `.env.example` 为 `.env` 并配置。
+3. 运行 `go run main.go`。
 
-6. **访问**:
-   - 申请页面: `http://localhost:3000`
-   - 管理后台: `http://localhost:3000/admin`
+### 前端 (React)
 
-## ⚖️ 开源协议
+1. 进入 `frontend` 目录。
+2. 运行 `npm install`。
+3. 运行 `npm run dev`。
 
-本项目采用 **AGPL-3.0** 协议开源。
+## 许可证
 
-> **注意**: 申请理由可用于后续 L 站的正式注册理由，系统相当于进行一次初审。
-
----
-由 **星月御安全** 强力驱动 🌙⭐
+本项目采用 [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE) 协议开源。
