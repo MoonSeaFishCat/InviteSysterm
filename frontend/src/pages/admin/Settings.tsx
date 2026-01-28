@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Input, Button, Card, CardBody, CardHeader, Divider, Switch, Spinner, Textarea, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure
 } from "@heroui/react";
-import { FaSave, FaCog, FaEnvelope, FaShieldAlt, FaKey } from 'react-icons/fa';
+import { FaSave, FaCog, FaEnvelope, FaShieldAlt, FaKey, FaLinux } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
@@ -246,6 +246,48 @@ export default function Settings() {
                 inputWrapper: "border-2"
               }}
             />
+          </CardBody>
+        </Card>
+
+        <Card className="shadow-sm border border-divider md:col-span-2">
+          <CardHeader className="flex gap-3 px-6 py-4">
+            <FaLinux className="text-success" size={20} />
+            <p className="font-bold text-lg">Linux DO OAuth2 配置</p>
+          </CardHeader>
+          <Divider />
+          <CardBody className="grid grid-cols-1 md:grid-cols-2 gap-6 px-6 py-6">
+            <Input
+              label="Client ID"
+              placeholder="从 connect.linux.do 获取"
+              value={settings.linuxdo_client_id || ''}
+              onValueChange={(val) => handleChange('linuxdo_client_id', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <Input
+              label="Client Secret"
+              placeholder="从 connect.linux.do 获取"
+              type="password"
+              value={settings.linuxdo_client_secret || ''}
+              onValueChange={(val) => handleChange('linuxdo_client_secret', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <div className="md:col-span-2 p-4 bg-default-50 rounded-large border border-divider">
+              <p className="text-sm font-bold mb-1">回调地址 (Redirect URI)</p>
+              <p className="text-tiny text-default-500 mb-2">请将以下地址填入 Linux DO 开放平台的 Redirect URI 配置中：</p>
+              <code className="text-xs bg-default-200 p-2 rounded block break-all">
+                {window.location.origin}/api/admin/linuxdo/callback
+              </code>
+            </div>
           </CardBody>
         </Card>
 

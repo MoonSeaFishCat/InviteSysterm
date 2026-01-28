@@ -33,7 +33,49 @@ func InitDB(dbPath string) error {
 		return err
 	}
 
+	// 迁移管理员数据并初始化默认管理员
+	if err = migrateAdmins(); err != nil {
+		return err
+	}
+
 	log.Println("Database initialized successfully")
+	return nil
+}
+
+func migrateAdmins() error {
+	// 检查是否已经有管理员
+	var count int
+	err := DB.QueryRow("SELECT COUNT(*) FROM admins").Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		// 尝试从 settings 表获取旧的管理员信息
+		var username, passwordHash string
+		err = DB.QueryRow("SELECT value FROM settings WHERE key = 'admin_username'").Scan(&username)
+		if err == nil {
+			err = DB.QueryRow("SELECT value FROM settings WHERE key = 'admin_password_hash'").Scan(&passwordHash)
+		}
+
+		// 如果获取失败（新安装），使用默认值
+		if err != nil {
+			username = "admin"
+			passwordHash = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" // admin
+		}
+
+		// 插入第一个超级管理员
+		_, err = DB.Exec(`
+			INSERT INTO admins (username, password_hash, role, created_at, updated_at)
+			VALUES (?, ?, 'super', ?, ?)
+		`, username, passwordHash, time.Now().Unix(), time.Now().Unix())
+		if err != nil {
+			return err
+		}
+
+		log.Printf("Default super admin '%s' created\n", username)
+	}
+
 	return nil
 }
 
@@ -100,14 +142,45 @@ func createTables() error {
 		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 	);
 
+	CREATE TABLE IF NOT EXISTS admins (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL UNIQUE,
+		password_hash TEXT, -- 对于 Linux DO 用户，该字段可以为空
+		role TEXT NOT NULL DEFAULT 'reviewer', -- super, reviewer
+		linuxdo_id TEXT UNIQUE, -- Linux DO 的用户 ID
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_applications_email ON applications(email);
 	CREATE INDEX IF NOT EXISTS idx_applications_device ON applications(device_id);
+	CREATE TABLE IF NOT EXISTS audit_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		admin_id INTEGER REFERENCES admins(id),
+		admin_username TEXT,
+		action TEXT NOT NULL, -- approve, reject
+		application_id INTEGER REFERENCES applications(id),
+		target_email TEXT,
+		details TEXT,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_admin ON audit_logs(admin_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_app ON audit_logs(application_id);
 	CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 	CREATE INDEX IF NOT EXISTS idx_verification_codes_email ON verification_codes(email);
 	`
 
 	_, err := DB.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 检查并添加 linuxdo_id 字段
+	_, _ = DB.Exec("ALTER TABLE admins ADD COLUMN linuxdo_id TEXT")
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_linuxdo_id ON admins(linuxdo_id)")
+
+	return nil
 }
 
 func initDefaultSettings() error {
@@ -123,8 +196,8 @@ func initDefaultSettings() error {
 		"smtp_pass":                   "",
 		"site_name":                   "小汐的邀请码申请系统",
 		"home_announcement":           "欢迎来到小汐的邀请码申请系统，请认真填写您的申请理由，我们将用心审核每一份申请。\nPS：小汐也不知道项目会运行多久 一切随缘（确信）大概率应该是小汐跌出三级？",
-		"admin_username":              "admin",
-		"admin_password_hash":         "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918", // admin
+		"linuxdo_client_id":           "",
+		"linuxdo_client_secret":       "",
 	}
 
 	for key, value := range defaultSettings {

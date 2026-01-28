@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem, Link, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
-import { FaMoon, FaSun, FaUserCircle, FaSignOutAlt, FaShieldAlt, FaUsers, FaBullhorn, FaCog } from 'react-icons/fa';
+import { FaMoon, FaSun, FaUserCircle, FaSignOutAlt, FaShieldAlt, FaUsers, FaBullhorn, FaCog, FaUserShield, FaHistory } from 'react-icons/fa';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -11,11 +11,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isAdminPage = location.pathname.startsWith('/admin');
   const isDashboard = location.pathname === '/admin/dashboard';
 
-  const adminTabs = [
-    { id: 'applications', label: '申请管理', icon: <FaUsers size={16} /> },
-    { id: 'announcements', label: '系统公告', icon: <FaBullhorn size={16} /> },
-    { id: 'settings', label: '系统设置', icon: <FaCog size={16} /> },
+  // Get user role
+  const user = JSON.parse(localStorage.getItem('admin_user') || '{}');
+  const role = user.role || 'reviewer';
+
+  const allAdminTabs = [
+    { id: 'applications', label: '申请管理', icon: <FaUsers size={16} />, roles: ['super', 'reviewer'] },
+    { id: 'announcements', label: '系统公告', icon: <FaBullhorn size={16} />, roles: ['super'] },
+    { id: 'audit-logs', label: '审核日志', icon: <FaHistory size={16} />, roles: ['super'] },
+    { id: 'settings', label: '系统设置', icon: <FaCog size={16} />, roles: ['super'] },
+    { id: 'admins', label: '人员管理', icon: <FaUserShield size={16} />, roles: ['super'] },
   ];
+
+  const adminTabs = allAdminTabs.filter(tab => tab.roles.includes(role));
 
   const currentTab = new URLSearchParams(location.search).get('tab') || 'applications';
 
@@ -77,7 +85,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <span className="hidden sm:inline">{tab.label}</span>
                 {tab.id === 'announcements' && <span className="sm:hidden text-[10px]">公告</span>}
                 {tab.id === 'applications' && <span className="sm:hidden text-[10px]">申请</span>}
+                {tab.id === 'audit-logs' && <span className="sm:hidden text-[10px]">日志</span>}
                 {tab.id === 'settings' && <span className="sm:hidden text-[10px]">设置</span>}
+                {tab.id === 'admins' && <span className="sm:hidden text-[10px]">人员</span>}
               </Button>
             </NavbarItem>
           ))}

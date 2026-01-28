@@ -8,6 +8,7 @@ import (
 	"invite-backend/database"
 	"invite-backend/models"
 	"invite-backend/services"
+	"invite-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -146,7 +147,55 @@ func ReviewApplication(c *gin.Context) {
 		}
 	}
 
+	// 记录审计日志
+	adminID, _ := c.Get("admin_id")
+	adminUsername, _ := c.Get("admin_username")
+	_, _ = database.DB.Exec(
+		"INSERT INTO audit_logs (admin_id, admin_username, action, application_id, target_email, details) VALUES (?, ?, ?, ?, ?, ?)",
+		adminID, adminUsername, req.Status, req.AppID, email, req.Data.Note,
+	)
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "审核成功"})
+}
+
+// GetAuditLogs 获取审计日志
+func GetAuditLogs(c *gin.Context) {
+	rows, err := database.DB.Query(`
+		SELECT id, admin_id, admin_username, action, application_id, target_email, details, created_at 
+		FROM audit_logs 
+		ORDER BY created_at DESC 
+		LIMIT 200
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	var logs []map[string]interface{}
+	for rows.Next() {
+		var id, adminID, appID int
+		var adminUsername, action, targetEmail, details string
+		var createdAtVal interface{}
+
+		err := rows.Scan(&id, &adminID, &adminUsername, &action, &appID, &targetEmail, &details, &createdAtVal)
+		if err != nil {
+			continue
+		}
+
+		logs = append(logs, map[string]interface{}{
+			"id":             id,
+			"admin_id":       adminID,
+			"admin_username": adminUsername,
+			"action":         action,
+			"application_id": appID,
+			"target_email":   targetEmail,
+			"details":        details,
+			"created_at":     time.Unix(database.ToUnixTimestamp(createdAtVal), 0),
+		})
+	}
+
+	c.JSON(http.StatusOK, logs)
 }
 
 // GetSettings 获取系统设置
@@ -183,10 +232,7 @@ func UpdateSettings(c *gin.Context) {
 
 // GetAnnouncements 获取所有公告
 func GetAnnouncements(c *gin.Context) {
-	isAdmin := false
-	if _, exists := c.Get("admin"); exists {
-		isAdmin = true
-	}
+	_, isAdmin := c.Get("admin_role")
 
 	query := "SELECT id, content, is_active, created_at FROM announcements"
 	if !isAdmin {
@@ -283,4 +329,148 @@ func ToggleAnnouncement(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "状态已更新"})
+}
+
+// GetAdmins 获取所有管理员
+func GetAdmins(c *gin.Context) {
+	rows, err := database.DB.Query("SELECT id, username, role, linuxdo_id, created_at, updated_at FROM admins ORDER BY created_at DESC")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	admins := make([]models.Admin, 0)
+	for rows.Next() {
+		var admin models.Admin
+		var createdAtVal, updatedAtVal interface{}
+		var linuxdoID sql.NullString
+		if err := rows.Scan(&admin.ID, &admin.Username, &admin.Role, &linuxdoID, &createdAtVal, &updatedAtVal); err != nil {
+			continue
+		}
+		if linuxdoID.Valid {
+			admin.LinuxDoID = linuxdoID.String
+		}
+		admin.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
+		admin.UpdatedAt = time.Unix(database.ToUnixTimestamp(updatedAtVal), 0)
+		admins = append(admins, admin)
+	}
+
+	c.JSON(http.StatusOK, admins)
+}
+
+// AddAdmin 添加管理员
+func AddAdmin(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password" binding:"required"`
+		Role     string `json:"role" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if req.Role != "super" && req.Role != "reviewer" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "角色无效"})
+		return
+	}
+
+	passwordHash := utils.HashPassword(req.Password)
+	now := time.Now().Unix()
+
+	_, err := database.DB.Exec(
+		"INSERT INTO admins (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		req.Username, passwordHash, req.Role, now, now,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "用户名已存在或添加失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员已添加"})
+}
+
+// DeleteAdmin 删除管理员
+func DeleteAdmin(c *gin.Context) {
+	id := c.Param("id")
+	currentAdminID, _ := c.Get("admin_id")
+
+	// 不能删除自己
+	if id == string(currentAdminID.(int)) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "不能删除自己"})
+		return
+	}
+
+	// 检查是否是最后一个超级管理员
+	var role string
+	err := database.DB.QueryRow("SELECT role FROM admins WHERE id = ?", id).Scan(&role)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "管理员不存在"})
+		return
+	}
+
+	if role == "super" {
+		var superCount int
+		database.DB.QueryRow("SELECT COUNT(*) FROM admins WHERE role = 'super'").Scan(&superCount)
+		if superCount <= 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "必须保留至少一个超级管理员"})
+			return
+		}
+	}
+
+	_, err = database.DB.Exec("DELETE FROM admins WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员已删除"})
+}
+
+// UpdateAdmin 更新管理员角色或密码
+func UpdateAdmin(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	query := "UPDATE admins SET updated_at = ?"
+	args := []interface{}{time.Now().Unix()}
+
+	if req.Role != "" {
+		if req.Role != "super" && req.Role != "reviewer" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "角色无效"})
+			return
+		}
+		query += ", role = ?"
+		args = append(args, req.Role)
+	}
+
+	if req.Password != "" {
+		if len(req.Password) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "密码至少需要6个字符"})
+			return
+		}
+		query += ", password_hash = ?"
+		args = append(args, utils.HashPassword(req.Password))
+	}
+
+	query += " WHERE id = ?"
+	args = append(args, id)
+
+	_, err := database.DB.Exec(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员信息已更新"})
 }

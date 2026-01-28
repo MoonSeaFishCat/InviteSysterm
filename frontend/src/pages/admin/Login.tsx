@@ -3,9 +3,10 @@ import { Input, Button, Card, CardBody, CardHeader } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { FaLock, FaUser, FaShieldAlt, FaSync } from 'react-icons/fa';
+import { FaLock, FaUser, FaShieldAlt, FaSync, FaExternalLinkAlt } from 'react-icons/fa';
 import { StarMoonSecurity } from '../../utils/security';
 import { getDeviceId } from '../../utils/device';
+import { SiLinux } from 'react-icons/si';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -19,6 +20,11 @@ export default function Login() {
   useEffect(() => {
     fetchCaptcha();
   }, []);
+
+  const handleLinuxDoLogin = () => {
+    // 直接跳转到后端的 Linux DO 登录接口
+    window.location.href = '/api/admin/linuxdo';
+  };
 
   const fetchCaptcha = async () => {
     setCaptchaLoading(true);
@@ -54,6 +60,13 @@ export default function Login() {
       });
       
       localStorage.setItem('admin_token', res.data.token);
+      
+      // 获取当前用户信息
+      const meRes = await api.get('/admin/me');
+      if (meRes.data.success) {
+        localStorage.setItem('admin_user', JSON.stringify(meRes.data.data));
+      }
+
       toast.success("登录成功");
       navigate('/admin/dashboard');
     } catch (error: any) {
@@ -134,6 +147,22 @@ export default function Login() {
                 isLoading={loading}
               >
                 登录
+              </Button>
+
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-divider"></div>
+                <span className="flex-shrink mx-4 text-default-400 text-sm">或者</span>
+                <div className="flex-grow border-t border-divider"></div>
+              </div>
+
+              <Button 
+                onPress={handleLinuxDoLogin}
+                variant="bordered"
+                className="w-full h-14 text-lg font-bold border-2 hover:bg-default-100"
+                startContent={<SiLinux />}
+                endContent={<FaExternalLinkAlt size={14} className="text-default-400" />}
+              >
+                使用 Linux DO 登录
               </Button>
             </form>
           </CardBody>

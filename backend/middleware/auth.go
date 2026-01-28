@@ -31,20 +31,47 @@ func AuthMiddleware() gin.HandlerFunc {
 				})
 
 				if err == nil && token.Valid {
-					c.Next()
-					return
+					if claims, ok := token.Claims.(jwt.MapClaims); ok {
+						c.Set("admin_id", int(claims["id"].(float64)))
+						c.Set("admin_username", claims["username"].(string))
+						c.Set("admin_role", claims["role"].(string))
+						c.Next()
+						return
+					}
 				}
 			}
 		}
 
-		// 2. 备选方案：尝试从 Cookie 获取 Session (保留兼容性)
-		sessionID, err := c.Cookie("admin_session")
-		if err == nil && sessionID != "" && SessionStore[sessionID] {
-			c.Next()
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后操作"})
+		c.Abort()
+	}
+}
+
+// RoleMiddleware 角色权限中间件
+func RoleMiddleware(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		adminRole, exists := c.Get("admin_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后操作"})
+			c.Abort()
 			return
 		}
 
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后操作"})
-		c.Abort()
+		roleStr := adminRole.(string)
+		allowed := false
+		for _, role := range roles {
+			if roleStr == role {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "权限不足，无法访问该页面"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
 	}
 }

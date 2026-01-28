@@ -36,8 +36,9 @@ func main() {
 	r := gin.New() // 使用 New 而不是 Default，避免重复注册中间件
 	r.Use(gin.Logger(), gin.Recovery())
 
-	// 设置信任代理（解决警告）
-	r.SetTrustedProxies(nil)
+	// 设置信任代理（如果你的程序运行在 Nginx 等反向代理之后，请设置正确的代理 IP）
+	// 默认信任本地环回地址，这样可以获取到 X-Forwarded-For 等头部的真实 IP
+	r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
 	// CORS 配置
 	r.Use(cors.New(cors.Config{
@@ -76,20 +77,38 @@ func main() {
 			admin.POST("/login", handlers.AdminLogin)
 			admin.POST("/logout", handlers.AdminLogout)
 
+			// Linux DO 登录
+			admin.GET("/linuxdo", handlers.LinuxDoLogin)
+			admin.GET("/linuxdo/callback", handlers.LinuxDoCallback)
+
 			// 需要认证的路由
 			authenticated := admin.Group("", middleware.AuthMiddleware())
 			{
+				// 所有管理员都能访问的
 				authenticated.GET("/applications", handlers.GetApplications)
 				authenticated.POST("/review", handlers.ReviewApplication)
-				authenticated.GET("/settings", handlers.GetSettings)
-				authenticated.POST("/settings/update", handlers.UpdateSettings)
 				authenticated.POST("/change-password", handlers.ChangePassword)
+				authenticated.GET("/me", handlers.GetMe) // 获取当前用户信息
 
-				// 公告管理
-				authenticated.GET("/announcements", handlers.GetAnnouncements)
-				authenticated.POST("/announcements", handlers.AddAnnouncement)
-				authenticated.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
-				authenticated.POST("/announcements/:id/toggle", handlers.ToggleAnnouncement)
+				// 只有超级管理员能访问的
+				super := authenticated.Group("", middleware.RoleMiddleware("super"))
+				{
+					super.GET("/settings", handlers.GetSettings)
+					super.POST("/settings/update", handlers.UpdateSettings)
+					super.GET("/audit-logs", handlers.GetAuditLogs)
+
+					// 公告管理
+					super.GET("/announcements", handlers.GetAnnouncements)
+					super.POST("/announcements", handlers.AddAnnouncement)
+					super.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
+					super.POST("/announcements/:id/toggle", handlers.ToggleAnnouncement)
+
+					// 管理员管理
+					super.GET("/admins", handlers.GetAdmins)
+					super.POST("/admins", handlers.AddAdmin)
+					super.DELETE("/admins/:id", handlers.DeleteAdmin)
+					super.PUT("/admins/:id", handlers.UpdateAdmin)
+				}
 			}
 		}
 	}

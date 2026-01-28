@@ -42,6 +42,17 @@ type Setting struct {
 	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
 }
 
+// Admin 管理员账号
+type Admin struct {
+	ID           int       `json:"id" db:"id"`
+	Username     string    `json:"username" db:"username"`
+	PasswordHash string    `json:"-" db:"password_hash"`
+	Role         string    `json:"role" db:"role"` // super, reviewer
+	LinuxDoID    string    `json:"linuxdoId" db:"linuxdo_id"`
+	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+}
+
 // SystemSettings 系统配置集合
 type SystemSettings struct {
 	ApplicationOpen          string `json:"application_open"`
@@ -53,5 +64,6 @@ type SystemSettings struct {
 	SMTPPort                 string `json:"smtp_port"`
 	SMTPUser                 string `json:"smtp_user"`
 	SMTPPass                 string `json:"smtp_pass"`
-	AdminPasswordHash        string `json:"admin_password_hash"`
+	LinuxDoClientID          string `json:"linuxdo_client_id"`
+	LinuxDoClientSecret      string `json:"linuxdo_client_secret"`
 }
