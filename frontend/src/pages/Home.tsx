@@ -91,6 +91,12 @@ export default function Home() {
       toast.error("请填写完整信息");
       return;
     }
+
+    if (reason.length < 50) {
+      toast.error("申请理由不能少于 50 个字，请认真填写");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const nonce = Math.floor(Math.random() * 1000000);
@@ -326,6 +332,14 @@ export default function Home() {
                                 onValueChange={setReason}
                                 variant="bordered"
                                 minRows={4}
+                                description={
+                                  <div className="flex justify-between w-full">
+                                    <span>请认真填写，审核将非常严格</span>
+                                    <span className={reason.length < 50 ? "text-danger" : "text-success"}>
+                                      {reason.length} / 50 (最少 50 字)
+                                    </span>
+                                  </div>
+                                }
                                 classNames={{
                                   inputWrapper: "border-divider/50 p-4",
                                   label: "font-bold text-default-600"

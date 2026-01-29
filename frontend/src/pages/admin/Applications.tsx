@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { 
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, 
   Chip, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, 
-  useDisclosure, Textarea, Input, Spinner, Select, SelectItem
+  useDisclosure, Textarea, Input, Spinner, Select, SelectItem, Pagination,
+  Tooltip
 } from "@heroui/react";
-import { FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaMagic, FaEnvelope, FaCalendarAlt, FaGlobe, FaFingerprint } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope, FaCalendarAlt, FaGlobe, FaFingerprint, FaTrash } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
@@ -17,30 +18,49 @@ interface Application {
   ip: string;
   createdAt: string;
   adminNote?: string;
+  reviewOpinion?: string;
+  adminUsername?: string;
 }
 
 export default function Applications() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [reviewStatus, setReviewStatus] = useState<'approved' | 'rejected'>('approved');
   const [inviteCode, setInviteCode] = useState('');
   const [adminNote, setAdminNote] = useState('');
+  const [reviewOpinion, setReviewOpinion] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
   const {isOpen, onOpen, onClose} = useDisclosure();
+  const deleteModal = useDisclosure();
+  const [appToDelete, setAppToDelete] = useState<Application | null>(null);
+
+  const user = JSON.parse(localStorage.getItem('admin_user') || '{}');
+  const role = user.role || 'reviewer';
 
   const fetchApps = async () => {
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = {
+        page,
+        pageSize,
+      };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery) params.search = searchQuery;
       
       const res = await api.get('/admin/applications', { params });
-      setApps(Array.isArray(res.data) ? res.data : []);
+      if (res.data && res.data.items) {
+        setApps(res.data.items);
+        setTotal(res.data.total);
+      } else {
+        setApps(Array.isArray(res.data) ? res.data : []);
+      }
     } catch (error: any) {
       toast.error("无法加载申请列表");
     } finally {
@@ -53,23 +73,14 @@ export default function Applications() {
       fetchApps();
     }, 300);
     return () => clearTimeout(timer);
-  }, [statusFilter, searchQuery]);
-
-  const generateCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 排除容易混淆的字符
-    let result = '';
-    for (let i = 0; i < 8; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setInviteCode(result);
-    toast.success("已生成随机邀请码");
-  };
+  }, [statusFilter, searchQuery, page, pageSize]);
 
   const handleOpenDetail = (app: Application) => {
     setSelectedApp(app);
     setReviewStatus('approved');
     setInviteCode('');
     setAdminNote(app.adminNote || '');
+    setReviewOpinion(app.reviewOpinion || '');
     onOpen();
   };
 
@@ -87,7 +98,8 @@ export default function Applications() {
         status: reviewStatus,
         data: {
           code: inviteCode,
-          note: adminNote
+          note: adminNote,
+          opinion: reviewOpinion
         }
       });
       toast.success("审核提交成功");
@@ -95,6 +107,22 @@ export default function Applications() {
       fetchApps();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "审核失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!appToDelete) return;
+    
+    setSubmitting(true);
+    try {
+      await api.delete(`/admin/applications/${appToDelete.id}`);
+      toast.success("删除成功");
+      deleteModal.onClose();
+      fetchApps();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "删除失败");
     } finally {
       setSubmitting(false);
     }
@@ -172,7 +200,7 @@ export default function Applications() {
         );
       case "actions":
         return (
-          <div className="relative flex items-center justify-end">
+          <div className="relative flex items-center justify-end gap-2">
             <Button 
               size="sm" 
               variant="flat" 
@@ -183,6 +211,23 @@ export default function Applications() {
             >
               详情
             </Button>
+            {role === 'super' && (
+              <Tooltip content="删除申请" color="danger">
+                <Button 
+                  size="sm" 
+                  variant="flat" 
+                  color="danger"
+                  isIconOnly
+                  onPress={() => {
+                    setAppToDelete(app);
+                    deleteModal.onOpen();
+                  }}
+                  className="font-bold shadow-sm"
+                >
+                  <FaTrash />
+                </Button>
+              </Tooltip>
+            )}
           </div>
         );
       default:
@@ -275,6 +320,19 @@ export default function Applications() {
             )}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <div className="flex justify-center py-4 border-t border-divider">
+            <Pagination
+              isCompact
+              showControls
+              showShadow
+              color="primary"
+              page={page}
+              total={Math.ceil(total / pageSize)}
+              onChange={setPage}
+            />
+          </div>
+        )}
       </div>
 
       <Modal 
@@ -354,15 +412,22 @@ export default function Applications() {
             <div className="space-y-4 pt-4 border-t border-divider">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-default-600">处理申请</p>
-                {selectedApp?.status !== 'pending' && (
-                  <Chip 
-                    color={selectedApp?.status === 'approved' ? 'success' : 'danger'} 
-                    variant="flat"
-                    className="font-bold"
-                  >
-                    {selectedApp?.status === 'approved' ? '已批准' : '已拒绝'}
-                  </Chip>
-                )}
+                <div className="flex items-center gap-2">
+                  {selectedApp?.adminUsername && (
+                    <Chip size="sm" variant="flat" color="secondary" className="font-bold">
+                      审核员: {selectedApp.adminUsername}
+                    </Chip>
+                  )}
+                  {selectedApp?.status !== 'pending' && (
+                    <Chip 
+                      color={selectedApp?.status === 'approved' ? 'success' : 'danger'} 
+                      variant="flat"
+                      className="font-bold"
+                    >
+                      {selectedApp?.status === 'approved' ? '已批准' : '已拒绝'}
+                    </Chip>
+                  )}
+                </div>
               </div>
 
               {selectedApp?.status === 'pending' ? (
@@ -400,41 +465,55 @@ export default function Applications() {
                         label: "font-bold text-primary",
                         inputWrapper: "border-2 focus-within:border-primary h-14"
                       }}
-                      endContent={
-                        <Button
-                          size="sm"
-                          variant="flat"
-                          color="primary"
-                          onPress={generateCode}
-                          startContent={<FaMagic />}
-                          className="font-bold"
-                        >
-                          随机生成
-                        </Button>
-                      }
                     />
                   )}
 
                   <Textarea
-                    label="审核备注"
-                    placeholder="对该申请的内部备注或给用户的说明"
-                    value={adminNote}
-                    onValueChange={setAdminNote}
+                    label="审核意见"
+                    placeholder="将发送给申请人的说明（如：已通过、申请理由不足等）"
+                    description="💡 此内容将通过邮件发送给申请人，请礼貌用语。"
+                    value={reviewOpinion}
+                    onValueChange={setReviewOpinion}
                     variant="bordered"
                     radius="lg"
                     minRows={3}
                     classNames={{
+                      label: "font-bold text-primary",
+                      inputWrapper: "border-2",
+                      description: "text-primary/70 font-medium mt-1"
+                    }}
+                  />
+
+                  <Textarea
+                    label="审核备注"
+                    placeholder="仅审核员和管理可见的内部备注"
+                    description="🔒 此内容仅管理员可见，不会发送给申请人。"
+                    value={adminNote}
+                    onValueChange={setAdminNote}
+                    variant="bordered"
+                    radius="lg"
+                    minRows={2}
+                    classNames={{
                       label: "font-bold",
-                      inputWrapper: "border-2"
+                      inputWrapper: "border-2",
+                      description: "text-default-400 mt-1"
                     }}
                   />
                 </div>
               ) : (
-                <div className="p-4 bg-default-50 dark:bg-default-800/50 rounded-xl border border-divider">
-                  <p className="text-xs font-bold text-default-400 uppercase mb-2">管理员备注</p>
-                  <p className="text-sm text-default-600 italic">
-                    {selectedApp?.adminNote || '无备注信息'}
-                  </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                    <p className="text-xs font-bold text-primary uppercase mb-2">审核意见 (已发送)</p>
+                    <p className="text-sm text-default-600 italic">
+                      {selectedApp?.reviewOpinion || '无意见信息'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-default-50 dark:bg-default-800/50 rounded-xl border border-divider">
+                    <p className="text-xs font-bold text-default-400 uppercase mb-2">审核备注 (内部)</p>
+                    <p className="text-sm text-default-600 italic">
+                      {selectedApp?.adminNote || '无备注信息'}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -460,6 +539,46 @@ export default function Applications() {
                 确认提交审核
               </Button>
             )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 删除确认弹窗 */}
+      <Modal 
+        isOpen={deleteModal.isOpen} 
+        onClose={deleteModal.onClose}
+        placement="center"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">确认删除</ModalHeader>
+          <ModalBody>
+            <div className="flex flex-col items-center gap-4 py-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-danger/10 flex items-center justify-center">
+                <FaTrash size={28} className="text-danger" />
+              </div>
+              <div className="space-y-2">
+                <p className="font-bold text-lg">您确定要删除此申请吗？</p>
+                <p className="text-default-500 text-sm">
+                  删除后将无法恢复，关联的邀请码记录（如果有）也将被一并删除。
+                  <br />
+                  <span className="font-bold text-danger">申请邮箱: {appToDelete?.email}</span>
+                </p>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={deleteModal.onClose}>
+              取消
+            </Button>
+            <Button 
+              color="danger" 
+              onPress={handleDelete}
+              isLoading={submitting}
+              className="font-bold"
+            >
+              确认删除
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

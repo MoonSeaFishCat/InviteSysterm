@@ -14,6 +14,7 @@ import (
 	"invite-backend/config"
 	"invite-backend/database"
 	"invite-backend/middleware"
+	"invite-backend/services"
 	"invite-backend/utils"
 
 	"github.com/gin-gonic/gin"
@@ -137,9 +138,16 @@ func LinuxDoCallback(c *gin.Context) {
 		return
 	}
 
-	// 3. 校验信任等级 (限制 3 级及以上)
-	if userInfo.TrustLevel < 3 {
-		c.String(http.StatusForbidden, "权限不足：您的 Linux DO 信任等级需达到 3 级以上才能登录管理后台")
+	// 3. 校验信任等级
+	settings, _ := services.GetSystemSettings()
+	minLevelStr := settings["linuxdo_min_trust_level"]
+	minLevel, _ := strconv.Atoi(minLevelStr)
+	if minLevel <= 0 {
+		minLevel = 3 // 默认 3 级
+	}
+
+	if userInfo.TrustLevel < minLevel {
+		c.String(http.StatusForbidden, fmt.Sprintf("权限不足：您的 Linux DO 信任等级需达到 %d 级以上才能登录管理后台", minLevel))
 		return
 	}
 
@@ -151,6 +159,12 @@ func LinuxDoCallback(c *gin.Context) {
 
 	err = database.DB.QueryRow("SELECT id, username, role FROM admins WHERE linuxdo_id = ?", linuxDoID).Scan(&id, &dbUsername, &role)
 	if err != nil {
+		// 检查是否允许自动注册
+		if settings["allow_auto_admin_reg"] == "false" {
+			c.String(http.StatusForbidden, "系统已关闭自动注册，请联系超级管理员手动添加。")
+			return
+		}
+
 		// 如果不存在，则创建（默认 role 为 reviewer）
 		now := time.Now().Unix()
 		res, err := database.DB.Exec(

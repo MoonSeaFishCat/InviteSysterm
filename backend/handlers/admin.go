@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"strconv"
 	"time"
 
 	"invite-backend/database"
@@ -17,23 +18,52 @@ import (
 func GetApplications(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 
-	query := "SELECT id, email, reason, status, device_id, ip, created_at, updated_at, admin_note FROM applications WHERE 1=1"
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// 基础查询
+	baseQuery := `
+		FROM applications a 
+		LEFT JOIN admins ad ON a.processed_by = ad.id 
+		WHERE 1=1`
 	var args []interface{}
 
 	if status != "" {
-		query += " AND status = ?"
+		baseQuery += " AND a.status = ?"
 		args = append(args, status)
 	}
 
 	if search != "" {
-		query += " AND (email LIKE ? OR reason LIKE ?)"
+		baseQuery += " AND (a.email LIKE ? OR a.reason LIKE ?)"
 		args = append(args, "%"+search+"%", "%"+search+"%")
 	}
 
-	query += " ORDER BY created_at DESC"
+	// 获取总数
+	var total int
+	err := database.DB.QueryRow("SELECT COUNT(*) "+baseQuery, args...).Scan(&total)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询总数失败"})
+		return
+	}
 
-	rows, err := database.DB.Query(query, args...)
+	// 获取分页数据
+	query := `
+		SELECT 
+			a.id, a.email, a.reason, a.status, a.device_id, a.ip, 
+			a.created_at, a.updated_at, a.admin_note, a.review_opinion, 
+			a.processed_by, ad.username as admin_username ` + baseQuery + `
+		ORDER BY a.created_at DESC 
+		LIMIT ? OFFSET ?`
+
+	dataArgs := append(args, pageSize, (page-1)*pageSize)
+	rows, err := database.DB.Query(query, dataArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
 		return
@@ -44,11 +74,13 @@ func GetApplications(c *gin.Context) {
 	for rows.Next() {
 		var app models.Application
 		var createdAtVal, updatedAtVal interface{}
-		var adminNote sql.NullString
+		var adminNote, reviewOpinion, adminUsername sql.NullString
+		var processedBy sql.NullInt64
 
 		err := rows.Scan(
 			&app.ID, &app.Email, &app.Reason, &app.Status,
-			&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote,
+			&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
+			&processedBy, &adminUsername,
 		)
 		if err != nil {
 			continue
@@ -59,11 +91,26 @@ func GetApplications(c *gin.Context) {
 		if adminNote.Valid {
 			app.AdminNote = adminNote.String
 		}
+		if reviewOpinion.Valid {
+			app.ReviewOpinion = reviewOpinion.String
+		}
+		if processedBy.Valid {
+			id := int(processedBy.Int64)
+			app.ProcessedBy = &id
+		}
+		if adminUsername.Valid {
+			app.AdminUsername = adminUsername.String
+		}
 
 		apps = append(apps, app)
 	}
 
-	c.JSON(http.StatusOK, apps)
+	c.JSON(http.StatusOK, gin.H{
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+		"items":    apps,
+	})
 }
 
 // ReviewApplication 审核申请
@@ -72,8 +119,9 @@ func ReviewApplication(c *gin.Context) {
 		AppID  int    `json:"appId" binding:"required"`
 		Status string `json:"status" binding:"required"`
 		Data   struct {
-			Code string `json:"code"`
-			Note string `json:"note"`
+			Code    string `json:"code"`
+			Note    string `json:"note"`
+			Opinion string `json:"opinion"`
 		} `json:"data"`
 	}
 
@@ -103,10 +151,13 @@ func ReviewApplication(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	// 获取管理员 ID
+	adminID, _ := c.Get("admin_id")
+
 	// 更新申请状态
 	_, err = tx.Exec(
-		"UPDATE applications SET status = ?, admin_note = ?, updated_at = ? WHERE id = ?",
-		req.Status, req.Data.Note, time.Now().Unix(), req.AppID,
+		"UPDATE applications SET status = ?, admin_note = ?, review_opinion = ?, processed_by = ?, updated_at = ? WHERE id = ?",
+		req.Status, req.Data.Note, req.Data.Opinion, adminID, time.Now().Unix(), req.AppID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新失败"})
@@ -137,25 +188,79 @@ func ReviewApplication(c *gin.Context) {
 		return
 	}
 
-	// 发送邮件
-	emailService, emailErr := services.GetEmailService()
-	if emailErr == nil {
-		if req.Status == "approved" {
-			emailService.SendApprovalEmail(email, req.Data.Code, req.Data.Note)
-		} else {
-			emailService.SendRejectionEmail(email, req.Data.Note)
+	// 异步发送邮件，避免阻塞审核响应
+	go func(status, targetEmail, code, opinion string) {
+		emailService, emailErr := services.GetEmailService()
+		if emailErr == nil {
+			if status == "approved" {
+				emailService.SendApprovalEmail(targetEmail, code, opinion)
+			} else {
+				emailService.SendRejectionEmail(targetEmail, opinion)
+			}
 		}
-	}
+	}(req.Status, email, req.Data.Code, req.Data.Opinion)
 
 	// 记录审计日志
-	adminID, _ := c.Get("admin_id")
 	adminUsername, _ := c.Get("admin_username")
+	auditDetails := req.Data.Note
+	if req.Data.Opinion != "" {
+		if auditDetails != "" {
+			auditDetails += " | 意见: " + req.Data.Opinion
+		} else {
+			auditDetails = "意见: " + req.Data.Opinion
+		}
+	}
 	_, _ = database.DB.Exec(
 		"INSERT INTO audit_logs (admin_id, admin_username, action, application_id, target_email, details) VALUES (?, ?, ?, ?, ?, ?)",
-		adminID, adminUsername, req.Status, req.AppID, email, req.Data.Note,
+		adminID, adminUsername, req.Status, req.AppID, email, auditDetails,
 	)
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "审核成功"})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "处理成功"})
+}
+
+// DeleteApplication 删除申请
+func DeleteApplication(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的申请ID"})
+		return
+	}
+
+	// 开始事务
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	// 1. 删除关联的邀请码（如果有）
+	_, err = tx.Exec("DELETE FROM invitation_codes WHERE application_id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除关联邀请码失败"})
+		return
+	}
+
+	// 2. 删除申请记录
+	res, err := tx.Exec("DELETE FROM applications WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除申请失败"})
+		return
+	}
+
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "删除成功"})
 }
 
 // GetAuditLogs 获取审计日志
@@ -375,6 +480,15 @@ func AddAdmin(c *gin.Context) {
 	if req.Role != "super" && req.Role != "reviewer" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "角色无效"})
 		return
+	}
+
+	// 检查是否允许新增审核员
+	if req.Role == "reviewer" {
+		settings, _ := services.GetSystemSettings()
+		if settings["allow_auto_admin_reg"] == "false" {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "系统已关闭新增审核员功能"})
+			return
+		}
 	}
 
 	passwordHash := utils.HashPassword(req.Password)

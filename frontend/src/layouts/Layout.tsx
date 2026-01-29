@@ -68,7 +68,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </RouterLink>
       </NavbarBrand>
 
-      {hasToken && isDashboard && (
+      {hasToken && isDashboard && adminTabs.length === 1 && (
+        <NavbarContent className="hidden sm:flex" justify="center">
+          <NavbarItem>
+            <span className="text-sm font-bold text-primary bg-primary/10 px-4 py-2 rounded-lg border border-primary/20">
+              {adminTabs[0].label}
+            </span>
+          </NavbarItem>
+        </NavbarContent>
+      )}
+
+      {hasToken && isDashboard && adminTabs.length > 1 && (
         <NavbarContent className="flex gap-1 sm:gap-4" justify="center">
           {adminTabs.map((tab) => (
             <NavbarItem key={tab.id} isActive={currentTab === tab.id}>
@@ -135,7 +145,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     startContent={<FaShieldAlt className="text-primary" />}
                     className="h-10"
                   >
-                    控制台
+                    {role === 'super' ? '控制台' : '申请管理'}
                   </DropdownItem>
                   <DropdownItem 
                     key="logout" 

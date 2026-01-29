@@ -107,7 +107,9 @@ func createTables() error {
 		ip TEXT NOT NULL,
 		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-		admin_note TEXT
+		admin_note TEXT,
+		review_opinion TEXT,
+		processed_by INTEGER REFERENCES admins(id)
 	);
 
 	CREATE TABLE IF NOT EXISTS verification_codes (
@@ -180,6 +182,15 @@ func createTables() error {
 	_, _ = DB.Exec("ALTER TABLE admins ADD COLUMN linuxdo_id TEXT")
 	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_linuxdo_id ON admins(linuxdo_id)")
 
+	// 检查并添加 review_opinion 字段
+	_, _ = DB.Exec("ALTER TABLE applications ADD COLUMN review_opinion TEXT")
+	// 检查并添加 processed_by 字段
+	_, _ = DB.Exec("ALTER TABLE applications ADD COLUMN processed_by INTEGER")
+
+	// 添加性能索引
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_ip ON applications(ip)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_processed_by ON applications(processed_by)")
+
 	return nil
 }
 
@@ -190,6 +201,7 @@ func initDefaultSettings() error {
 		"email_whitelist":             "",
 		"max_applications_per_email":  "1",
 		"max_applications_per_device": "1",
+		"max_applications_per_ip":     "3",
 		"smtp_host":                   "",
 		"smtp_port":                   "465",
 		"smtp_user":                   "",
@@ -198,6 +210,8 @@ func initDefaultSettings() error {
 		"home_announcement":           "欢迎来到小汐的邀请码申请系统，请认真填写您的申请理由，我们将用心审核每一份申请。\nPS：小汐也不知道项目会运行多久 一切随缘（确信）大概率应该是小汐跌出三级？",
 		"linuxdo_client_id":           "",
 		"linuxdo_client_secret":       "",
+		"linuxdo_min_trust_level":     "3",
+		"allow_auto_admin_reg":        "true",
 	}
 
 	for key, value := range defaultSettings {

@@ -49,6 +49,12 @@ func SubmitApplication(c *gin.Context) {
 		return
 	}
 
+	// 增加申请理由字数限制（最少 50 字）
+	if len([]rune(reason)) < 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "申请理由不能少于 50 个字，请认真填写"})
+		return
+	}
+
 	ip := c.ClientIP()
 	settings, _ := services.GetSystemSettings()
 
@@ -126,6 +132,33 @@ func SubmitApplication(c *gin.Context) {
 		).Scan(&approvedDeviceCount)
 		if approvedDeviceCount >= maxDevice {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该设备已成功申请过邀请码"})
+			return
+		}
+
+		// IP 提交次数限制（统计所有状态）
+		maxIP, _ := strconv.Atoi(settings["max_applications_per_ip"])
+		if maxIP == 0 {
+			maxIP = 3 // 默认 3 次
+		}
+		var totalIPCount int
+		database.DB.QueryRow(
+			"SELECT COUNT(*) FROM applications WHERE ip = ?",
+			ip,
+		).Scan(&totalIPCount)
+		if totalIPCount >= maxIP {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该 IP 提交次数过多，请联系管理员"})
+			return
+		}
+
+		// 设备提交总数限制（修复同一设备多次提交的问题，统计所有状态）
+		var totalDeviceCount int
+		database.DB.QueryRow(
+			"SELECT COUNT(*) FROM applications WHERE device_id = ?",
+			req.Fingerprint,
+		).Scan(&totalDeviceCount)
+		// 限制每个设备最多提交 3 次（防止恶意重复提交）
+		if totalDeviceCount >= 3 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该设备提交次数过多，请勿重复操作"})
 			return
 		}
 	}

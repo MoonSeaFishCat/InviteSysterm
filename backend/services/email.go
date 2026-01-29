@@ -105,7 +105,7 @@ func (e *EmailService) SendApprovalEmail(to, code, note string) error {
 	if note != "" {
 		noteHTML = fmt.Sprintf(`
 			<div style="background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px 20px; margin: 25px 0; border-radius: 4px;">
-				<div style="color: #0369a1; font-weight: 600; margin-bottom: 8px;">📝 管理员备注</div>
+				<div style="color: #0369a1; font-weight: 600; margin-bottom: 8px;">📝 审核意见</div>
 				<div style="color: #334155; line-height: 1.6;">%s</div>
 			</div>
 		`, note)
@@ -269,7 +269,7 @@ func (e *EmailService) SendRejectionEmail(to, reason string) error {
             </p>
             
             <div class="reason-box">
-                <div class="reason-title">📌 未通过原因</div>
+                <div class="reason-title">📌 审核意见</div>
                 <p class="reason-text">%s</p>
             </div>
 

@@ -233,6 +233,19 @@ export default function Settings() {
                 inputWrapper: "border-2"
               }}
             />
+            <Input
+              label="单 IP 提交上限"
+              type="number"
+              value={settings.max_applications_per_ip || '3'}
+              onValueChange={(val) => handleChange('max_applications_per_ip', val)}
+              variant="bordered"
+              radius="lg"
+              size="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
             <Textarea
               label="邮箱白名单"
               placeholder="允许的后缀, 如: gmail.com, qq.com"
@@ -287,6 +300,27 @@ export default function Settings() {
               <code className="text-xs bg-default-200 p-2 rounded block break-all">
                 {window.location.origin}/api/admin/linuxdo/callback
               </code>
+            </div>
+            <div className="md:col-span-2 flex flex-col md:flex-row gap-6 p-4 bg-default-50 rounded-large border border-divider">
+              <div className="flex-grow flex flex-col gap-1">
+                <p className="text-sm font-bold">开放自动注册审核员</p>
+                <p className="text-tiny text-default-500">开启后，符合信任等级条件的 Linux DO 用户首次登录将自动创建审核员账号</p>
+              </div>
+              <div className="flex items-center gap-6">
+                <Input
+                  label="最低信任等级"
+                  type="number"
+                  size="sm"
+                  className="w-32"
+                  value={settings.linuxdo_min_trust_level || '3'}
+                  onValueChange={(val) => handleChange('linuxdo_min_trust_level', val)}
+                  variant="bordered"
+                />
+                <Switch
+                  isSelected={settings.allow_auto_admin_reg === 'true'}
+                  onValueChange={(isSelected) => handleChange('allow_auto_admin_reg', isSelected ? 'true' : 'false')}
+                />
+              </div>
             </div>
           </CardBody>
         </Card>

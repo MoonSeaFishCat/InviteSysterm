@@ -52,6 +52,9 @@ func main() {
 
 	// 公开 API 路由
 	api := r.Group("/api")
+	// 全局频率限制：每分钟最多 60 个请求
+	limiter := middleware.NewRateLimiter(60, time.Minute)
+	api.Use(limiter.Middleware())
 	{
 		// 统计信息
 		api.GET("/stats", handlers.GetStats)
@@ -108,6 +111,9 @@ func main() {
 					super.POST("/admins", handlers.AddAdmin)
 					super.DELETE("/admins/:id", handlers.DeleteAdmin)
 					super.PUT("/admins/:id", handlers.UpdateAdmin)
+
+					// 申请管理
+					super.DELETE("/applications/:id", handlers.DeleteApplication)
 				}
 			}
 		}

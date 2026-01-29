@@ -4,15 +4,18 @@ import "time"
 
 // Application 申请记录
 type Application struct {
-	ID        int       `json:"id" db:"id"`
-	Email     string    `json:"email" db:"email"`
-	Reason    string    `json:"reason" db:"reason"`
-	Status    string    `json:"status" db:"status"` // pending, approved, rejected
-	DeviceID  string    `json:"deviceId" db:"device_id"`
-	IP        string    `json:"ip" db:"ip"`
-	CreatedAt time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
-	AdminNote string    `json:"adminNote" db:"admin_note"`
+	ID            int       `json:"id" db:"id"`
+	Email         string    `json:"email" db:"email"`
+	Reason        string    `json:"reason" db:"reason"`
+	Status        string    `json:"status" db:"status"` // pending, approved, rejected
+	DeviceID      string    `json:"deviceId" db:"device_id"`
+	IP            string    `json:"ip" db:"ip"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
+	AdminNote     string    `json:"adminNote" db:"admin_note"`
+	ReviewOpinion string    `json:"reviewOpinion" db:"review_opinion"`
+	ProcessedBy   *int      `json:"processedBy" db:"processed_by"`
+	AdminUsername string    `json:"adminUsername" db:"admin_username"`
 }
 
 // VerificationCode 验证码
@@ -60,6 +63,7 @@ type SystemSettings struct {
 	EmailWhitelist           string `json:"email_whitelist"`
 	MaxApplicationsPerEmail  string `json:"max_applications_per_email"`
 	MaxApplicationsPerDevice string `json:"max_applications_per_device"`
+	MaxApplicationsPerIP     string `json:"max_applications_per_ip"`
 	SMTPHost                 string `json:"smtp_host"`
 	SMTPPort                 string `json:"smtp_port"`
 	SMTPUser                 string `json:"smtp_user"`
