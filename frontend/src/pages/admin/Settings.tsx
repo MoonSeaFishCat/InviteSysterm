@@ -197,6 +197,20 @@ export default function Settings() {
                 inputWrapper: "border-2"
               }}
             />
+            <Input
+              label="邮箱白名单"
+              placeholder="留空不限制，多个用逗号分隔，如 @gmail.com,test@example.com"
+              value={settings.email_whitelist || ''}
+              onValueChange={(val) => handleChange('email_whitelist', val)}
+              variant="bordered"
+              radius="lg"
+              size="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+              description="用户注册时将检查邮箱是否匹配此白名单"
+            />
           </CardBody>
         </Card>
 
@@ -246,19 +260,148 @@ export default function Settings() {
                 inputWrapper: "border-2"
               }}
             />
-            <Textarea
-              label="邮箱白名单"
-              placeholder="允许的后缀, 如: gmail.com, qq.com"
-              value={settings.email_whitelist || ''}
-              onValueChange={(val) => handleChange('email_whitelist', val)}
+          </CardBody>
+        </Card>
+
+        <Card className="shadow-sm border border-divider">
+          <CardHeader className="flex gap-3 px-6 py-4">
+            <FaShieldAlt className="text-warning" size={20} />
+            <p className="font-bold text-lg">人机验证 (极验 4.0)</p>
+          </CardHeader>
+          <Divider />
+          <CardBody className="gap-6 px-6 py-6">
+            <div className="flex justify-between items-center p-4 bg-default-50 rounded-large border border-divider">
+              <div>
+                <p className="text-sm font-bold">开启验证</p>
+                <p className="text-tiny text-default-500">登录与注册是否开启人机验证</p>
+              </div>
+              <Switch 
+                color="primary"
+                isSelected={settings.geetest_enabled === 'true'} 
+                onValueChange={(val) => handleChange('geetest_enabled', val ? 'true' : 'false')}
+              />
+            </div>
+            <Input
+              label="Captcha ID"
+              placeholder="极验后台获取的 ID"
+              value={settings.geetest_id || ''}
+              onValueChange={(val) => handleChange('geetest_id', val)}
               variant="bordered"
               radius="lg"
-              minRows={2}
               classNames={{
                 label: "font-bold text-default-500",
                 inputWrapper: "border-2"
               }}
             />
+            <Input
+              label="Captcha Key"
+              placeholder="极验后台获取的 Key"
+              type="password"
+              value={settings.geetest_key || ''}
+              onValueChange={(val) => handleChange('geetest_key', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+          </CardBody>
+        </Card>
+
+        <Card className="shadow-sm border border-divider md:col-span-2">
+          <CardHeader className="flex gap-3 px-6 py-4">
+            <FaEnvelope className="text-primary" size={20} />
+            <p className="font-bold text-lg">邮件通知服务 (SMTP)</p>
+          </CardHeader>
+          <Divider />
+          <CardBody className="flex flex-col gap-6 px-6 py-6">
+            <div className="flex justify-between items-center p-4 bg-default-50 rounded-large border border-divider">
+              <div>
+                <p className="text-sm font-bold">注册验证</p>
+                <p className="text-tiny text-default-500">新用户注册是否需要邮箱验证码</p>
+              </div>
+              <Switch 
+                color="primary"
+                isSelected={settings.reg_email_verify_enabled === 'true'} 
+                onValueChange={(val) => handleChange('reg_email_verify_enabled', val ? 'true' : 'false')}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Input
+                label="SMTP 服务器"
+                placeholder="如: smtp.gmail.com"
+                value={settings.smtp_host || ''}
+                onValueChange={(val) => handleChange('smtp_host', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+              <Input
+                label="SMTP 端口"
+                placeholder="如: 465"
+                value={settings.smtp_port || '465'}
+                onValueChange={(val) => handleChange('smtp_port', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+              <Input
+                label="SMTP 账号"
+                placeholder="邮箱地址"
+                value={settings.smtp_user || ''}
+                onValueChange={(val) => handleChange('smtp_user', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+              <Input
+                label="SMTP 密码"
+                placeholder="授权码或密码"
+                type="password"
+                value={settings.smtp_pass || ''}
+                onValueChange={(val) => handleChange('smtp_pass', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+              <Input
+                label="发件人邮箱"
+                placeholder="发件人邮箱地址"
+                value={settings.smtp_from || ''}
+                onValueChange={(val) => handleChange('smtp_from', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+              <Input
+                label="发件人名称"
+                placeholder="发件人显示名称"
+                value={settings.smtp_from_name || ''}
+                onValueChange={(val) => handleChange('smtp_from_name', val)}
+                variant="bordered"
+                radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+            </div>
           </CardBody>
         </Card>
 
@@ -322,83 +465,6 @@ export default function Settings() {
                 />
               </div>
             </div>
-          </CardBody>
-        </Card>
-
-        <Card className="shadow-sm border border-divider md:col-span-2">
-          <CardHeader className="flex gap-3 px-6 py-4">
-            <FaEnvelope className="text-pink-500" size={20} />
-            <p className="font-bold text-lg">邮件通知服务</p>
-          </CardHeader>
-          <Divider />
-          <CardBody className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-6 py-6">
-            <Input
-              label="SMTP 服务器"
-              value={settings.smtp_host || ''}
-              onValueChange={(val) => handleChange('smtp_host', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
-            <Input
-              label="SMTP 端口"
-              value={settings.smtp_port || '465'}
-              onValueChange={(val) => handleChange('smtp_port', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
-            <Input
-              label="SMTP 账号"
-              value={settings.smtp_user || ''}
-              onValueChange={(val) => handleChange('smtp_user', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
-            <Input
-              label="SMTP 密码"
-              type="password"
-              value={settings.smtp_pass || ''}
-              onValueChange={(val) => handleChange('smtp_pass', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
-            <Input
-              label="发件人邮箱"
-              value={settings.smtp_from || ''}
-              onValueChange={(val) => handleChange('smtp_from', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
-            <Input
-              label="发件人名称"
-              value={settings.smtp_from_name || ''}
-              onValueChange={(val) => handleChange('smtp_from_name', val)}
-              variant="bordered"
-              radius="lg"
-              classNames={{
-                label: "font-bold text-default-500",
-                inputWrapper: "border-2"
-              }}
-            />
           </CardBody>
         </Card>
       </div>

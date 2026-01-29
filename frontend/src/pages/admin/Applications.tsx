@@ -8,6 +8,7 @@ import {
 import { FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope, FaCalendarAlt, FaGlobe, FaFingerprint, FaTrash } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
+import { storage } from '../../utils/storage';
 
 interface Application {
   id: number;
@@ -36,12 +37,16 @@ export default function Applications() {
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedKeys, setSelectedKeys] = useState<any>(new Set());
   
   const {isOpen, onOpen, onClose} = useDisclosure();
   const deleteModal = useDisclosure();
+  const batchReviewModal = useDisclosure();
+  const batchDeleteModal = useDisclosure();
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
 
-  const user = JSON.parse(localStorage.getItem('admin_user') || '{}');
+  // Get user role
+  const user = storage.get('admin_user') || {};
   const role = user.role || 'reviewer';
 
   const fetchApps = async () => {
@@ -123,6 +128,55 @@ export default function Applications() {
       fetchApps();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "删除失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBatchReview = async (status: 'approved' | 'rejected') => {
+    if (selectedKeys.size === 0) {
+      toast.error("请选择申请");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.post('/admin/applications/batch-review', {
+        appIds: Array.from(selectedKeys).map(id => Number(id)),
+        status,
+        data: {
+          opinion: reviewOpinion,
+          note: adminNote
+        }
+      });
+      toast.success("批量处理成功");
+      batchReviewModal.onClose();
+      setSelectedKeys(new Set());
+      fetchApps();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "批量处理失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedKeys.size === 0) {
+      toast.error("请选择申请");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.post('/admin/applications/batch-delete', {
+        appIds: Array.from(selectedKeys).map(id => Number(id))
+      });
+      toast.success("批量删除成功");
+      batchDeleteModal.onClose();
+      setSelectedKeys(new Set());
+      fetchApps();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "批量删除失败");
     } finally {
       setSubmitting(false);
     }
@@ -243,7 +297,33 @@ export default function Applications() {
           <p className="text-sm text-default-500">查看并审核新成员的加入申请</p>
         </div>
         
-        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto items-center">
+          <div className="flex gap-2 mr-2">
+            <Button 
+              size="sm" 
+              color="primary" 
+              variant="flat"
+              isDisabled={selectedKeys === "all" || selectedKeys.size === 0}
+              onPress={() => {
+                setReviewOpinion('');
+                setAdminNote('');
+                batchReviewModal.onOpen();
+              }}
+              className="h-12 px-4 rounded-large font-bold"
+            >
+              批量审核
+            </Button>
+            <Button 
+              size="sm" 
+              color="danger" 
+              variant="flat"
+              isDisabled={selectedKeys === "all" || selectedKeys.size === 0}
+              onPress={batchDeleteModal.onOpen}
+              className="h-12 px-4 rounded-large font-bold"
+            >
+              批量删除
+            </Button>
+          </div>
           <Input
             isClearable
             aria-label="搜索申请"
@@ -294,6 +374,9 @@ export default function Applications() {
         <Table 
           aria-label="申请列表" 
           removeWrapper
+          selectionMode="multiple"
+          selectedKeys={selectedKeys}
+          onSelectionChange={setSelectedKeys}
           className="min-w-full"
           classNames={{
             th: "bg-default-100 text-default-500 font-bold h-12 first:pl-6 last:pr-6",
@@ -539,6 +622,48 @@ export default function Applications() {
                 确认提交审核
               </Button>
             )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 批量审核 Modal */}
+      <Modal isOpen={batchReviewModal.isOpen} onOpenChange={batchReviewModal.onOpenChange}>
+        <ModalContent>
+          <ModalHeader>批量审核 ({selectedKeys === 'all' ? total : selectedKeys.size} 条)</ModalHeader>
+          <ModalBody>
+            <div className="flex flex-col gap-4">
+              <Textarea
+                label="审核回复 (用户可见)"
+                placeholder="请输入发送给用户的审核意见"
+                value={reviewOpinion}
+                onValueChange={setReviewOpinion}
+              />
+              <Textarea
+                label="内部备注 (仅管理员可见)"
+                placeholder="请输入内部备注"
+                value={adminNote}
+                onValueChange={setAdminNote}
+              />
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={batchReviewModal.onClose}>取消</Button>
+            <Button color="danger" onPress={() => handleBatchReview('rejected')} isLoading={submitting}>批量拒绝</Button>
+            <Button color="success" onPress={() => handleBatchReview('approved')} isLoading={submitting}>批量通过</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 批量删除 Modal */}
+      <Modal isOpen={batchDeleteModal.isOpen} onOpenChange={batchDeleteModal.onOpenChange}>
+        <ModalContent>
+          <ModalHeader>确认批量删除</ModalHeader>
+          <ModalBody>
+            <p>确定要删除选中的 {selectedKeys === 'all' ? total : selectedKeys.size} 条申请吗？此操作不可撤销。</p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={batchDeleteModal.onClose}>取消</Button>
+            <Button color="danger" onPress={handleBatchDelete} isLoading={submitting}>确认删除</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

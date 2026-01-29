@@ -28,10 +28,20 @@ interface Admin {
   id: number;
   username: string;
   role: 'super' | 'reviewer';
+  permissions?: string;
   linuxdoId?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+const PERMISSIONS = [
+  { key: 'applications', label: '申请管理' },
+  { key: 'tickets', label: '工单管理' },
+  { key: 'messages', label: '站内信管理' },
+  { key: 'announcements', label: '公告管理' },
+  { key: 'settings', label: '系统设置' },
+  { key: 'admins', label: '管理员管理' },
+];
 
 export default function Admins() {
   const [admins, setAdmins] = useState<Admin[]>([]);
@@ -44,6 +54,7 @@ export default function Admins() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'super' | 'reviewer'>('reviewer');
+  const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
 
   const fetchAdmins = async () => {
     setLoading(true);
@@ -65,6 +76,7 @@ export default function Admins() {
     setUsername('');
     setPassword('');
     setRole('reviewer');
+    setSelectedPermissions(new Set());
     setSelectedAdmin(null);
   };
 
@@ -80,17 +92,29 @@ export default function Admins() {
     setUsername(admin.username);
     setPassword('');
     setRole(admin.role);
+    if (admin.permissions === 'all') {
+      setSelectedPermissions(new Set(PERMISSIONS.map(p => p.key)));
+    } else {
+      setSelectedPermissions(new Set(admin.permissions?.split(',').filter(p => p) || []));
+    }
     onOpen();
   };
 
   const handleSubmit = async () => {
+    const permissionsStr = role === 'super' ? 'all' : Array.from(selectedPermissions).join(',');
+    
     if (modalMode === 'add') {
       if (!username || !password || !role) {
         toast.error("请填写完整信息");
         return;
       }
       try {
-        await api.post('/admin/admins', { username, password, role });
+        await api.post('/admin/admins', { 
+          username, 
+          password, 
+          role,
+          permissions: permissionsStr
+        });
         toast.success("添加成功");
         onOpenChange();
         fetchAdmins();
@@ -101,13 +125,14 @@ export default function Admins() {
       try {
         await api.put(`/admin/admins/${selectedAdmin?.id}`, { 
           password: password || undefined, 
-          role 
+          role,
+          permissions: permissionsStr
         });
-        toast.success("修改成功");
+        toast.success("更新成功");
         onOpenChange();
         fetchAdmins();
       } catch (error: any) {
-        toast.error(error.response?.data?.message || "修改失败");
+        toast.error(error.response?.data?.message || "更新失败");
       }
     }
   };
@@ -150,6 +175,7 @@ export default function Admins() {
         <TableHeader>
           <TableColumn>用户名</TableColumn>
           <TableColumn>角色</TableColumn>
+          <TableColumn>权限</TableColumn>
           <TableColumn>Linux DO</TableColumn>
           <TableColumn>创建时间</TableColumn>
           <TableColumn align="center">操作</TableColumn>
@@ -164,13 +190,28 @@ export default function Admins() {
               <TableCell className="font-medium">{admin.username}</TableCell>
               <TableCell>
                 <Chip 
-                  color={admin.role === 'super' ? "danger" : "primary"} 
+                  color={admin.role === 'super' ? "danger" : "primary"}
                   variant="flat" 
                   size="sm"
                   className="font-bold"
                 >
                   {admin.role === 'super' ? "超级管理员" : "审核员"}
                 </Chip>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap gap-1">
+                  {admin.role === 'super' || admin.permissions === 'all' ? (
+                    <Chip size="sm" variant="dot" color="success">全部权限</Chip>
+                  ) : (
+                    admin.permissions?.split(',').filter(p => p).map(p => {
+                      const label = PERMISSIONS.find(perm => perm.key === p)?.label || p;
+                      return <Chip key={p} size="sm" variant="flat" color="default">{label}</Chip>;
+                    })
+                  )}
+                  {(!admin.permissions && admin.role !== 'super') && (
+                    <span className="text-default-400 text-xs">无权限</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 {admin.linuxdoId ? (
@@ -251,6 +292,24 @@ export default function Admins() {
                   <SelectItem key="super" textValue="超级管理员">超级管理员</SelectItem>
                   <SelectItem key="reviewer" textValue="审核员">审核员</SelectItem>
                 </Select>
+
+                {role === 'reviewer' && (
+                  <Select
+                    label="权限设置"
+                    placeholder="为审核员分配权限"
+                    selectionMode="multiple"
+                    selectedKeys={selectedPermissions}
+                    onSelectionChange={(keys) => setSelectedPermissions(new Set(Array.from(keys) as string[]))}
+                    variant="bordered"
+                    radius="lg"
+                  >
+                    {PERMISSIONS.map((p) => (
+                      <SelectItem key={p.key} textValue={p.label}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                )}
               </ModalBody>
               <ModalFooter>
                 <Button variant="light" onPress={onClose} radius="lg">

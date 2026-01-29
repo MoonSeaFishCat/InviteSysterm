@@ -51,6 +51,7 @@ type Admin struct {
 	Username     string    `json:"username" db:"username"`
 	PasswordHash string    `json:"-" db:"password_hash"`
 	Role         string    `json:"role" db:"role"` // super, reviewer
+	Permissions  string    `json:"permissions" db:"permissions"`
 	LinuxDoID    string    `json:"linuxdoId" db:"linuxdo_id"`
 	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`

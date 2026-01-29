@@ -57,18 +57,45 @@ func main() {
 	api.Use(limiter.Middleware())
 	{
 		// 统计信息
-		api.GET("/stats", handlers.GetStats)
+		api.GET("/stats", handlers.GetPublicStats)
 
 		// 验证码相关
 		api.POST("/verification-code", handlers.SendVerificationCode)
+		api.POST("/register-code", handlers.SendRegistrationCode)
 		api.GET("/captcha", handlers.GetCaptcha)
 
 		// 安全挑战
 		api.GET("/security-challenge", handlers.GetSecurityChallenge)
 
 		// 申请相关
-		api.POST("/application/submit", handlers.SubmitApplication)
 		api.POST("/application/status", handlers.CheckApplicationStatus)
+
+		// 用户相关
+		user := api.Group("/user")
+		{
+			user.POST("/register", handlers.UserRegister)
+			user.POST("/login", handlers.UserLogin)
+
+			// 需要认证的用户路由
+			userAuth := user.Group("", middleware.UserAuthMiddleware())
+			{
+				userAuth.GET("/profile", handlers.GetUserProfile)
+				userAuth.POST("/profile", handlers.UpdateUserProfile)
+				userAuth.GET("/applications", handlers.GetUserApplications)
+				userAuth.POST("/application/submit", handlers.SubmitApplication)
+
+				// 工单相关
+				userAuth.GET("/tickets", handlers.GetUserTickets)
+				userAuth.POST("/tickets", handlers.CreateTicket)
+				userAuth.GET("/tickets/:id/messages", handlers.GetTicketMessages)
+				userAuth.POST("/tickets/:id/reply", handlers.ReplyTicket)
+
+				// 站内信相关
+				userAuth.GET("/messages", handlers.GetUserMessages)
+				userAuth.POST("/messages/:id/read", handlers.ReadMessage)
+				userAuth.POST("/messages/read-all", handlers.ReadAllMessages)
+			}
+		}
 
 		// 公告相关
 		api.GET("/announcements", handlers.GetAnnouncements)
@@ -88,10 +115,25 @@ func main() {
 			authenticated := admin.Group("", middleware.AuthMiddleware())
 			{
 				// 所有管理员都能访问的
+				authenticated.GET("/stats", handlers.AdminGetStats)
 				authenticated.GET("/applications", handlers.GetApplications)
 				authenticated.POST("/review", handlers.ReviewApplication)
+				authenticated.POST("/applications/batch-review", handlers.AdminBatchReviewApplications)
+				authenticated.POST("/applications/batch-delete", handlers.AdminBatchDeleteApplications)
 				authenticated.POST("/change-password", handlers.ChangePassword)
 				authenticated.GET("/me", handlers.GetMe) // 获取当前用户信息
+				authenticated.GET("/users", handlers.AdminGetUsers)
+
+				// 管理员工单管理
+				authenticated.GET("/tickets", handlers.AdminGetTickets)
+				authenticated.GET("/tickets/:id/messages", handlers.GetTicketMessages) // 复用用户侧的详情获取，但需要管理员鉴权逻辑在 handler 中区分或新建
+				authenticated.POST("/tickets/:id/reply", handlers.AdminReplyTicket)
+				authenticated.POST("/tickets/:id/close", handlers.AdminCloseTicket)
+
+				// 管理员站内信
+				authenticated.POST("/messages/send", handlers.AdminSendMessage)
+				authenticated.POST("/messages/batch-send", handlers.AdminBatchSendMessage)
+				authenticated.GET("/messages/history", handlers.AdminGetAllMessages)
 
 				// 只有超级管理员能访问的
 				super := authenticated.Group("", middleware.RoleMiddleware("super"))

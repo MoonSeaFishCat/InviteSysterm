@@ -1,8 +1,7 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -105,7 +104,8 @@ func LinuxDoCallback(c *gin.Context) {
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenRes); err != nil {
+	err = json.NewDecoder(resp.Body).Decode(&tokenRes)
+	if err != nil {
 		c.String(http.StatusInternalServerError, "解析令牌失败")
 		return
 	}
@@ -133,7 +133,8 @@ func LinuxDoCallback(c *gin.Context) {
 		Username   string `json:"username"`
 		TrustLevel int    `json:"trust_level"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&userInfo); err != nil {
+	err = json.NewDecoder(userResp.Body).Decode(&userInfo)
+	if err != nil {
 		c.String(http.StatusInternalServerError, "解析用户信息失败")
 		return
 	}
@@ -167,7 +168,8 @@ func LinuxDoCallback(c *gin.Context) {
 
 		// 如果不存在，则创建（默认 role 为 reviewer）
 		now := time.Now().Unix()
-		res, err := database.DB.Exec(
+		var res sql.Result
+		res, err = database.DB.Exec(
 			"INSERT INTO admins (username, password_hash, role, linuxdo_id, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?)",
 			userInfo.Username, linuxDoID, now, now,
 		)
@@ -244,22 +246,38 @@ func AdminLogin(c *gin.Context) {
 	username, _ := data["username"].(string)
 	password, _ := data["password"].(string)
 
+	fmt.Printf("Admin Login Attempt: username=%s, password_len=%d\n", username, len(password))
+
 	// 3. 验证用户名和密码
 	var id int
-	var storedPasswordHash, role string
-	err = database.DB.QueryRow("SELECT id, password_hash, role FROM admins WHERE username = ?", username).Scan(&id, &storedPasswordHash, &role)
+	var storedPasswordHash, role, permissions string
+	var permissionsNull sql.NullString
+	err = database.DB.QueryRow("SELECT id, password_hash, role, permissions FROM admins WHERE username = ?", username).Scan(&id, &storedPasswordHash, &role, &permissionsNull)
 
-	if err != nil || storedPasswordHash != utils.HashPassword(password) {
+	if err != nil {
+		fmt.Printf("Admin Login Failed: user not found or db error: %v\n", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "用户名或密码错误"})
 		return
 	}
 
+	inputHash := utils.HashPassword(password)
+	if storedPasswordHash != inputHash {
+		fmt.Printf("Admin Login Failed: password mismatch for user %s. Input hash: %s, Stored hash: %s\n", username, inputHash, storedPasswordHash)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "用户名或密码错误"})
+		return
+	}
+
+	if permissionsNull.Valid {
+		permissions = permissionsNull.String
+	}
+
 	// 生成 JWT Token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":       id,
-		"username": username,
-		"role":     role,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+		"id":          id,
+		"username":    username,
+		"role":        role,
+		"permissions": permissions,
+		"exp":         time.Now().Add(time.Hour * 24).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(config.AppConfig.JWTSecret))
@@ -358,8 +376,4 @@ func ChangePassword(c *gin.Context) {
 	}
 }
 
-func generateSessionID() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
+// generateSessionID is unused and removed

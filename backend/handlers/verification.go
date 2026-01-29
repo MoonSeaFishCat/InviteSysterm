@@ -11,11 +11,104 @@ import (
 	"invite-backend/database"
 	"invite-backend/models"
 	"invite-backend/services"
+	"invite-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// SendVerificationCode 发送验证码
+// SendRegistrationCode 发送注册验证码
+func SendRegistrationCode(c *gin.Context) {
+	var req struct {
+		Encrypted   string `json:"encrypted" binding:"required"`
+		Fingerprint string `json:"fingerprint" binding:"required"`
+		Nonce       int    `json:"nonce" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	// 解密数据
+	security := &utils.StarMoonSecurity{}
+	data, err := security.DecryptData(req.Encrypted, req.Fingerprint, req.Nonce)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "安全校验失败"})
+		return
+	}
+
+	email, _ := data["email"].(string)
+	lotNumber, _ := data["lot_number"].(string)
+	captchaOutput, _ := data["captcha_output"].(string)
+	passToken, _ := data["pass_token"].(string)
+	genTime, _ := data["gen_time"].(string)
+
+	if email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "邮箱不能为空"})
+		return
+	}
+
+	settings, _ := services.GetSystemSettings()
+
+	// 验证极验4.0
+	if settings["geetest_enabled"] == "true" {
+		if lotNumber == "" || captchaOutput == "" || passToken == "" || genTime == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请先完成人机验证"})
+			return
+		}
+		var ok bool
+		ok, err = utils.VerifyGeetestV4(
+			settings["geetest_id"],
+			settings["geetest_key"],
+			lotNumber,
+			captchaOutput,
+			passToken,
+			genTime,
+		)
+		if err != nil || !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "人机验证失败"})
+			return
+		}
+	}
+
+	// 检查邮箱是否已注册
+	var count int
+	database.DB.QueryRow("SELECT COUNT(*) FROM users WHERE email = ?", email).Scan(&count)
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该邮箱已注册"})
+		return
+	}
+
+	// 生成验证码
+	code := fmt.Sprintf("%06d", rand.Intn(900000)+100000)
+	expiresAt := time.Now().Add(10 * time.Minute).Unix()
+
+	// 保存验证码
+	_, err = database.DB.Exec(
+		"INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+		email, code, expiresAt,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "验证码生成失败"})
+		return
+	}
+
+	// 发送邮件
+	emailService, err := services.GetEmailService()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已发送（开发模式：" + code + "）"})
+		return
+	}
+
+	if err := emailService.SendVerificationCode(email, code); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "验证码发送失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已发送"})
+}
+
+// SendVerificationCode 发送验证码 (通用/申请)
 func SendVerificationCode(c *gin.Context) {
 	var req struct {
 		Email         string `json:"email" binding:"required,email"`
@@ -147,8 +240,8 @@ func GetSecurityChallenge(c *gin.Context) {
 	})
 }
 
-// GetStats 获取统计信息
-func GetStats(c *gin.Context) {
+// GetPublicStats 获取公共统计信息
+func GetPublicStats(c *gin.Context) {
 	var total, pending, approved, rejected, processed int
 
 	database.DB.QueryRow("SELECT COUNT(*) FROM applications").Scan(&total)
@@ -205,7 +298,6 @@ func CheckApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	app.ID = appID
 	app.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
 	if adminNote.Valid {
 		app.AdminNote = adminNote.String

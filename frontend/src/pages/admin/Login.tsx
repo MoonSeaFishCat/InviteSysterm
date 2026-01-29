@@ -101,6 +101,7 @@ export default function Login() {
                 variant="bordered"
                 radius="lg"
                 size="lg"
+                autoComplete="username"
                 classNames={{
                   label: "font-bold",
                   inputWrapper: "h-14 px-4"
@@ -116,6 +117,7 @@ export default function Login() {
                 variant="bordered"
                 radius="lg"
                 size="lg"
+                autoComplete="current-password"
                 classNames={{
                   label: "font-bold",
                   inputWrapper: "h-14 px-4"

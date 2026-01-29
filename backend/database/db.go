@@ -2,6 +2,8 @@ package database
 
 import (
 	"database/sql"
+	"invite-backend/config"
+	"invite-backend/utils"
 	"log"
 	"time"
 
@@ -43,28 +45,34 @@ func InitDB(dbPath string) error {
 }
 
 func migrateAdmins() error {
-	// 检查是否已经有管理员
+	// 1. 确保超级管理员存在
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM admins").Scan(&count)
+	err := DB.QueryRow("SELECT COUNT(*) FROM admins WHERE role = 'super'").Scan(&count)
 	if err != nil {
 		return err
 	}
 
-	if count == 0 {
-		// 尝试从 settings 表获取旧的管理员信息
-		var username, passwordHash string
-		err = DB.QueryRow("SELECT value FROM settings WHERE key = 'admin_username'").Scan(&username)
-		if err == nil {
-			err = DB.QueryRow("SELECT value FROM settings WHERE key = 'admin_password_hash'").Scan(&passwordHash)
-		}
+	// 从配置获取
+	configUsername := "admin"
+	if config.AppConfig.AdminUsername != "" {
+		configUsername = config.AppConfig.AdminUsername
+	}
 
-		// 如果获取失败（新安装），使用默认值
-		if err != nil {
-			username = "admin"
+	configPasswordHash := ""
+	if config.AppConfig.AdminPassword != "" && config.AppConfig.AdminPassword != "your_admin_password_here" {
+		configPasswordHash = utils.HashPassword(config.AppConfig.AdminPassword)
+	}
+
+	if count == 0 {
+		// 如果不存在超级管理员，创建一个
+		username := configUsername
+		passwordHash := configPasswordHash
+
+		// 如果没有配置密码，使用默认的 admin/admin
+		if passwordHash == "" {
 			passwordHash = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" // admin
 		}
 
-		// 插入第一个超级管理员
 		_, err = DB.Exec(`
 			INSERT INTO admins (username, password_hash, role, created_at, updated_at)
 			VALUES (?, ?, 'super', ?, ?)
@@ -72,8 +80,20 @@ func migrateAdmins() error {
 		if err != nil {
 			return err
 		}
-
 		log.Printf("Default super admin '%s' created\n", username)
+	} else if configPasswordHash != "" {
+		// 如果已经存在超级管理员，且配置了新密码，则强制同步配置中的用户名和密码
+		// 这方便用户通过 .env 重置密码
+		_, err = DB.Exec(`
+			UPDATE admins 
+			SET username = ?, password_hash = ?, updated_at = ? 
+			WHERE role = 'super'
+		`, configUsername, configPasswordHash, time.Now().Unix())
+		if err != nil {
+			log.Printf("Failed to sync admin credentials from config: %v\n", err)
+		} else {
+			log.Printf("Super admin '%s' credentials synced from config\n", configUsername)
+		}
 	}
 
 	return nil
@@ -98,8 +118,46 @@ func ToUnixTimestamp(v interface{}) int64 {
 
 func createTables() error {
 	schema := `
+	CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		email TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		nickname TEXT,
+		status TEXT NOT NULL DEFAULT 'active', -- active, banned
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS tickets (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL REFERENCES users(id),
+		subject TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'open', -- open, replied, closed
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS ticket_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+		sender_type TEXT NOT NULL, -- user, admin
+		sender_id INTEGER NOT NULL,
+		content TEXT NOT NULL,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL REFERENCES users(id),
+		title TEXT NOT NULL,
+		content TEXT NOT NULL,
+		is_read INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
 	CREATE TABLE IF NOT EXISTS applications (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER REFERENCES users(id), -- 关联登录用户
 		email TEXT NOT NULL,
 		reason TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'pending',
@@ -149,6 +207,7 @@ func createTables() error {
 		username TEXT NOT NULL UNIQUE,
 		password_hash TEXT, -- 对于 Linux DO 用户，该字段可以为空
 		role TEXT NOT NULL DEFAULT 'reviewer', -- super, reviewer
+		permissions TEXT DEFAULT '', -- 权限列表，逗号分隔，例如 'applications,tickets,messages'
 		linuxdo_id TEXT UNIQUE, -- Linux DO 的用户 ID
 		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
@@ -187,6 +246,9 @@ func createTables() error {
 	// 检查并添加 processed_by 字段
 	_, _ = DB.Exec("ALTER TABLE applications ADD COLUMN processed_by INTEGER")
 
+	// 检查并添加 user_id 字段到 applications
+	_, _ = DB.Exec("ALTER TABLE applications ADD COLUMN user_id INTEGER")
+
 	// 添加性能索引
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_ip ON applications(ip)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_processed_by ON applications(processed_by)")
@@ -198,7 +260,6 @@ func initDefaultSettings() error {
 	defaultSettings := map[string]string{
 		"application_open":            "true",
 		"risk_control_enabled":        "true",
-		"email_whitelist":             "",
 		"max_applications_per_email":  "1",
 		"max_applications_per_device": "1",
 		"max_applications_per_ip":     "3",
@@ -212,6 +273,11 @@ func initDefaultSettings() error {
 		"linuxdo_client_secret":       "",
 		"linuxdo_min_trust_level":     "3",
 		"allow_auto_admin_reg":        "true",
+		"email_whitelist":             "", // 留空表示不限制，多个用逗号分隔，如 @gmail.com,test@example.com
+		"geetest_id":                  "",
+		"geetest_key":                 "",
+		"geetest_enabled":             "false",
+		"reg_email_verify_enabled":    "true",
 	}
 
 	for key, value := range defaultSettings {

@@ -8,10 +8,12 @@ import (
 )
 
 type Config struct {
-	Port      string
-	DBPath    string
-	JWTSecret string
-	GinMode   string
+	Port          string
+	DBPath        string
+	JWTSecret     string
+	GinMode       string
+	AdminPassword string
+	AdminUsername string
 }
 
 var AppConfig *Config
@@ -22,13 +24,15 @@ func LoadConfig() {
 	_ = godotenv.Load()
 
 	AppConfig = &Config{
-		Port:      getEnv("SERVER_PORT", "8080"),
-		DBPath:    getEnv("DATABASE_PATH", "./invite.db"),
-		JWTSecret: getEnv("JWT_SECRET", "default_jwt_secret_key_change_me"),
-		GinMode:   getEnv("GIN_MODE", "debug"),
+		Port:          getEnv("SERVER_PORT", "8080"),
+		DBPath:        getEnv("DATABASE_PATH", "./invite.db"),
+		JWTSecret:     getEnv("JWT_SECRET", "default_jwt_secret_key_change_me"),
+		GinMode:       getEnv("GIN_MODE", "debug"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
+		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 	}
 
-	log.Printf("Config loaded: Port=%s, DBPath=%s, Mode=%s\n", AppConfig.Port, AppConfig.DBPath, AppConfig.GinMode)
+	log.Printf("Config loaded: Port=%s, DBPath=%s, Mode=%s, AdminUsername=%s\n", AppConfig.Port, AppConfig.DBPath, AppConfig.GinMode, AppConfig.AdminUsername)
 }
 
 func getEnv(key, defaultValue string) string {

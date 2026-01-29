@@ -75,3 +75,37 @@ func RoleMiddleware(roles ...string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// UserAuthMiddleware 用户认证中间件
+func UserAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString := parts[1]
+				token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+					}
+					return []byte(config.AppConfig.JWTSecret), nil
+				})
+
+				if err == nil && token.Valid {
+					if claims, ok := token.Claims.(jwt.MapClaims); ok {
+						// 确保是用户 Token 而不是管理员 Token (管理员 Token 有 role)
+						if _, hasRole := claims["role"]; !hasRole {
+							c.Set("user_id", int(claims["id"].(float64)))
+							c.Set("user_email", claims["email"].(string))
+							c.Next()
+							return
+						}
+					}
+				}
+			}
+		}
+
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后操作"})
+		c.Abort()
+	}
+}

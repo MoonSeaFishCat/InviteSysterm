@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +16,14 @@ import (
 
 // SubmitApplication 提交申请
 func SubmitApplication(c *gin.Context) {
+	// 获取登录用户
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后提交申请"})
+		return
+	}
+	userEmail, _ := c.Get("user_email")
+
 	var req struct {
 		Encrypted   string `json:"encrypted" binding:"required"`
 		Fingerprint string `json:"fingerprint" binding:"required"`
@@ -37,14 +44,18 @@ func SubmitApplication(c *gin.Context) {
 	}
 
 	email, _ := data["email"].(string)
-	code, _ := data["code"].(string)
 	reason, _ := data["reason"].(string)
 
 	// 统一转为小写并去空格
 	email = strings.ToLower(strings.TrimSpace(email))
-	code = strings.TrimSpace(code)
 
-	if email == "" || code == "" || reason == "" {
+	// 强制要求提交的邮箱必须是登录账号的邮箱
+	if email != userEmail.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "只能为当前登录账号申请"})
+		return
+	}
+
+	if email == "" || reason == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "提交内容不完整"})
 		return
 	}
@@ -64,115 +75,95 @@ func SubmitApplication(c *gin.Context) {
 		return
 	}
 
-	// 2. 验证验证码
-	var storedCode string
-	var expiresAtVal interface{}
-	err = database.DB.QueryRow(
-		"SELECT code, expires_at FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1",
-		email,
-	).Scan(&storedCode, &expiresAtVal)
-
-	expiresAt := database.ToUnixTimestamp(expiresAtVal)
-
-	if err == sql.ErrNoRows || storedCode != code || time.Now().Unix() > expiresAt {
-		fmt.Printf("Verification failed for %s: input=%s, stored=%s, expiresAt=%d, now=%d, err=%v\n",
-			email, code, storedCode, expiresAt, time.Now().Unix(), err)
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "验证码无效或已过期"})
-		return
-	}
-
-	// 3. 风控检查
 	if settings["risk_control_enabled"] == "true" {
 		// 检查是否有未拒绝的申请
 		var count int
 		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE (email = ? OR device_id = ?) AND status IN ('pending', 'approved')",
-			email, req.Fingerprint,
+			"SELECT COUNT(*) FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved')",
+			email, req.Fingerprint, userID,
 		).Scan(&count)
 
 		if count > 0 {
 			var status string
 			database.DB.QueryRow(
-				"SELECT status FROM applications WHERE (email = ? OR device_id = ?) AND status IN ('pending', 'approved') LIMIT 1",
-				email, req.Fingerprint,
+				"SELECT status FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved') LIMIT 1",
+				email, req.Fingerprint, userID,
 			).Scan(&status)
 
 			msg := "您已有正在处理中的申请，请耐心等待"
 			if status == "approved" {
-				msg = "您已成功获得邀请码，暂不能重复提交"
+				msg = "您已申请成功，请查看邮件"
 			}
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": msg})
 			return
 		}
 
-		// 邮箱限制（仅统计已通过）
-		maxEmail, _ := strconv.Atoi(settings["max_applications_per_email"])
-		if maxEmail == 0 {
-			maxEmail = 1
-		}
-		var approvedEmailCount int
-		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE email = ? AND status = 'approved'",
-			email,
-		).Scan(&approvedEmailCount)
-		if approvedEmailCount >= maxEmail {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该邮箱已成功申请过邀请码"})
-			return
-		}
-
-		// 设备限制（仅统计已通过）
-		maxDevice, _ := strconv.Atoi(settings["max_applications_per_device"])
-		if maxDevice == 0 {
-			maxDevice = 1
-		}
-		var approvedDeviceCount int
-		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE device_id = ? AND status = 'approved'",
-			req.Fingerprint,
-		).Scan(&approvedDeviceCount)
-		if approvedDeviceCount >= maxDevice {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该设备已成功申请过邀请码"})
-			return
-		}
-
-		// IP 提交次数限制（统计所有状态）
+		// 检查同 IP 提交上限
+		var ipCount int
+		database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE ip = ? AND created_at > ?", ip, time.Now().Unix()-86400).Scan(&ipCount)
 		maxIP, _ := strconv.Atoi(settings["max_applications_per_ip"])
-		if maxIP == 0 {
-			maxIP = 3 // 默认 3 次
-		}
-		var totalIPCount int
-		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE ip = ?",
-			ip,
-		).Scan(&totalIPCount)
-		if totalIPCount >= maxIP {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该 IP 提交次数过多，请联系管理员"})
-			return
-		}
-
-		// 设备提交总数限制（修复同一设备多次提交的问题，统计所有状态）
-		var totalDeviceCount int
-		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE device_id = ?",
-			req.Fingerprint,
-		).Scan(&totalDeviceCount)
-		// 限制每个设备最多提交 3 次（防止恶意重复提交）
-		if totalDeviceCount >= 3 {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该设备提交次数过多，请勿重复操作"})
+		if maxIP > 0 && ipCount >= maxIP {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "当前 IP 提交次数过多，请明天再试"})
 			return
 		}
 	}
 
 	// 4. 插入申请
-	_, err = database.DB.Exec(
-		"INSERT INTO applications (email, reason, device_id, ip, status) VALUES (?, ?, ?, ?, 'pending')",
-		email, reason, req.Fingerprint, ip,
+	now := time.Now().Unix()
+	res, err := database.DB.Exec(
+		"INSERT INTO applications (user_id, email, reason, device_id, ip, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		userID, email, reason, req.Fingerprint, ip, now, now,
 	)
-
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交失败，请重试"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "申请提交成功，请耐心等待审核"})
+	appID, _ := res.LastInsertId()
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "申请已提交，请等待审核", "id": appID})
+}
+
+// GetUserApplications 获取当前用户的申请记录
+func GetUserApplications(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	rows, err := database.DB.Query(`
+		SELECT a.id, a.email, a.reason, a.status, a.review_opinion, a.created_at, a.updated_at, i.code
+		FROM applications a
+		LEFT JOIN invitation_codes i ON a.id = i.application_id
+		WHERE a.user_id = ? 
+		ORDER BY a.created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "数据库错误"})
+		return
+	}
+	defer rows.Close()
+
+	var apps []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var email, reason, status string
+		var opinion, code sql.NullString
+		var createdAt, updatedAt int64
+		err = rows.Scan(&id, &email, &reason, &status, &opinion, &createdAt, &updatedAt, &code)
+		if err != nil {
+			continue
+		}
+
+		app := map[string]interface{}{
+			"id":              id,
+			"email":           email,
+			"reason":          reason,
+			"status":          status,
+			"review_opinion":  opinion.String,
+			"created_at":      createdAt,
+			"updated_at":      updatedAt,
+			"invitation_code": code.String,
+		}
+		apps = append(apps, app)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": apps})
 }

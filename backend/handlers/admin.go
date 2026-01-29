@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -263,6 +264,162 @@ func DeleteApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "删除成功"})
 }
 
+// AdminBatchReviewApplications 批量审核申请
+func AdminBatchReviewApplications(c *gin.Context) {
+	var req struct {
+		AppIDs []int  `json:"appIds" binding:"required"`
+		Status string `json:"status" binding:"required"`
+		Data   struct {
+			Opinion string `json:"opinion"`
+			Note    string `json:"note"`
+		} `json:"data"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != "approved" && req.Status != "rejected" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "状态值错误"})
+		return
+	}
+
+	adminID, _ := c.Get("admin_id")
+	adminUsername, _ := c.Get("admin_username")
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Unix()
+	emailService, _ := services.GetEmailService()
+
+	for _, appID := range req.AppIDs {
+		var email string
+		err := tx.QueryRow("SELECT email FROM applications WHERE id = ?", appID).Scan(&email)
+		if err != nil {
+			continue
+		}
+
+		// 更新申请状态
+		_, err = tx.Exec(
+			"UPDATE applications SET status = ?, admin_note = ?, review_opinion = ?, processed_by = ?, updated_at = ? WHERE id = ?",
+			req.Status, req.Data.Note, req.Data.Opinion, adminID, now, appID,
+		)
+		if err != nil {
+			continue
+		}
+
+		// 记录日志
+		tx.Exec(
+			"INSERT INTO audit_logs (admin_id, admin_username, action, application_id, target_email, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			adminID, adminUsername, "batch_"+req.Status, appID, email, fmt.Sprintf("批量审核: %s", req.Status), now,
+		)
+
+		// 异步发送邮件
+		if emailService != nil {
+			if req.Status == "approved" {
+				// 批量审核通过时，如果需要自动生成邀请码，这里需要逻辑。
+				// 目前先只发送通知，或者要求前端提供邀请码（批量生成邀请码较复杂，通常建议批量审核为拒绝，通过则逐个处理以分配码）
+				// 简化逻辑：如果是批量通过，我们只更新状态，不自动生成邀请码，除非系统支持。
+				go emailService.SendApprovalEmail(email, "请联系管理员获取", req.Data.Opinion)
+			} else {
+				go emailService.SendRejectionEmail(email, req.Data.Opinion)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "批量处理完成"})
+}
+
+// AdminBatchDeleteApplications 批量删除申请
+func AdminBatchDeleteApplications(c *gin.Context) {
+	var req struct {
+		AppIDs []int `json:"appIds" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	for _, appID := range req.AppIDs {
+		tx.Exec("DELETE FROM invitation_codes WHERE application_id = ?", appID)
+		tx.Exec("DELETE FROM applications WHERE id = ?", appID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "批量删除成功"})
+}
+
+// AdminGetStats 获取管理员统计数据
+func AdminGetStats(c *gin.Context) {
+	var stats struct {
+		PendingApps   int `json:"pending_apps"`
+		TotalApps     int `json:"total_apps"`
+		OpenTickets   int `json:"open_tickets"`
+		TotalUsers    int `json:"total_users"`
+		TotalMessages int `json:"total_messages"`
+	}
+
+	database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE status = 'pending'").Scan(&stats.PendingApps)
+	database.DB.QueryRow("SELECT COUNT(*) FROM applications").Scan(&stats.TotalApps)
+	database.DB.QueryRow("SELECT COUNT(*) FROM tickets WHERE status = 'open'").Scan(&stats.OpenTickets)
+	database.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&stats.TotalUsers)
+	database.DB.QueryRow("SELECT COUNT(*) FROM messages").Scan(&stats.TotalMessages)
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// AdminGetUsers 管理员获取用户列表
+func AdminGetUsers(c *gin.Context) {
+	rows, err := database.DB.Query("SELECT id, email, nickname, status, created_at FROM users ORDER BY created_at DESC")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "数据库错误"})
+		return
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var email, nickname, status string
+		var createdAt int64
+		if err := rows.Scan(&id, &email, &nickname, &status, &createdAt); err != nil {
+			continue
+		}
+		users = append(users, map[string]interface{}{
+			"id":         id,
+			"email":      email,
+			"nickname":   nickname,
+			"status":     status,
+			"created_at": createdAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": users})
+}
+
 // GetAuditLogs 获取审计日志
 func GetAuditLogs(c *gin.Context) {
 	rows, err := database.DB.Query(`
@@ -438,7 +595,7 @@ func ToggleAnnouncement(c *gin.Context) {
 
 // GetAdmins 获取所有管理员
 func GetAdmins(c *gin.Context) {
-	rows, err := database.DB.Query("SELECT id, username, role, linuxdo_id, created_at, updated_at FROM admins ORDER BY created_at DESC")
+	rows, err := database.DB.Query("SELECT id, username, role, permissions, linuxdo_id, created_at, updated_at FROM admins ORDER BY created_at DESC")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
 		return
@@ -449,12 +606,15 @@ func GetAdmins(c *gin.Context) {
 	for rows.Next() {
 		var admin models.Admin
 		var createdAtVal, updatedAtVal interface{}
-		var linuxdoID sql.NullString
-		if err := rows.Scan(&admin.ID, &admin.Username, &admin.Role, &linuxdoID, &createdAtVal, &updatedAtVal); err != nil {
+		var linuxdoID, permissions sql.NullString
+		if err := rows.Scan(&admin.ID, &admin.Username, &admin.Role, &permissions, &linuxdoID, &createdAtVal, &updatedAtVal); err != nil {
 			continue
 		}
 		if linuxdoID.Valid {
 			admin.LinuxDoID = linuxdoID.String
+		}
+		if permissions.Valid {
+			admin.Permissions = permissions.String
 		}
 		admin.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
 		admin.UpdatedAt = time.Unix(database.ToUnixTimestamp(updatedAtVal), 0)
@@ -512,7 +672,7 @@ func DeleteAdmin(c *gin.Context) {
 	currentAdminID, _ := c.Get("admin_id")
 
 	// 不能删除自己
-	if id == string(currentAdminID.(int)) {
+	if id == strconv.Itoa(currentAdminID.(int)) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "不能删除自己"})
 		return
 	}
@@ -547,8 +707,9 @@ func DeleteAdmin(c *gin.Context) {
 func UpdateAdmin(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Password    string `json:"password"`
+		Role        string `json:"role"`
+		Permissions string `json:"permissions"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -566,6 +727,20 @@ func UpdateAdmin(c *gin.Context) {
 		}
 		query += ", role = ?"
 		args = append(args, req.Role)
+	}
+
+	if req.Permissions != "" || req.Role == "super" {
+		// 超级管理员默认拥有所有权限，或者手动更新权限
+		query += ", permissions = ?"
+		if req.Role == "super" {
+			args = append(args, "all")
+		} else {
+			args = append(args, req.Permissions)
+		}
+	} else if req.Role == "reviewer" && req.Permissions == "" {
+		// 如果切换回审核员且没传权限，清空或设为默认
+		query += ", permissions = ?"
+		args = append(args, "")
 	}
 
 	if req.Password != "" {
