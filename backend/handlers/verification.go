@@ -85,14 +85,14 @@ func SendRegistrationCode(c *gin.Context) {
 		"SELECT created_at FROM verification_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
 		email,
 	).Scan(&lastSendTime)
-	
+
 	if err == nil {
 		// 如果上次发送时间在60秒内，则拒绝重复发送
 		timeSinceLastSend := time.Now().Unix() - lastSendTime
 		if timeSinceLastSend < 60 {
 			remainingTime := 60 - timeSinceLastSend
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"success": false, 
+				"success": false,
 				"message": fmt.Sprintf("发送过于频繁，请 %d 秒后再试", remainingTime),
 			})
 			return
@@ -115,9 +115,9 @@ func SendRegistrationCode(c *gin.Context) {
 
 	// 发送邮件
 	fmt.Printf("[DEBUG] 开始发送邮件到: %s\n", email)
-	fmt.Printf("[DEBUG] SMTP配置 - Host: %s, Port: %s, User: %s\n", 
+	fmt.Printf("[DEBUG] SMTP配置 - Host: %s, Port: %s, User: %s\n",
 		settings["smtp_host"], settings["smtp_port"], settings["smtp_user"])
-	
+
 	emailService, err := services.GetEmailService()
 	if err != nil {
 		// 如果邮件服务未配置，返回开发模式提示（但仍然是 success: true）

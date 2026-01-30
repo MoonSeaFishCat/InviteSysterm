@@ -31,7 +31,7 @@ func GetSystemSettings() (map[string]string, error) {
 // GetEmailService 根据系统设置创建邮件服务
 func GetEmailService() (*EmailService, error) {
 	fmt.Printf("[DEBUG] 开始获取邮件服务配置...\n")
-	
+
 	settings, err := GetSystemSettings()
 	if err != nil {
 		fmt.Printf("[ERROR] 获取系统设置失败: %v\n", err)
@@ -44,7 +44,7 @@ func GetEmailService() (*EmailService, error) {
 	user := settings["smtp_user"]
 	pass := settings["smtp_pass"]
 
-	fmt.Printf("[DEBUG] SMTP配置读取 - Host: %s, Port: %d, User: %s, Pass长度: %d\n", 
+	fmt.Printf("[DEBUG] SMTP配置读取 - Host: %s, Port: %d, User: %s, Pass长度: %d\n",
 		host, port, user, len(pass))
 
 	if host == "" || user == "" {

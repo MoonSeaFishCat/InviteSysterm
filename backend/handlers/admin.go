@@ -1026,14 +1026,14 @@ func GetBlacklist(c *gin.Context) {
 			continue
 		}
 		blacklist = append(blacklist, map[string]interface{}{
-			"id":                   id,
-			"type":                 blacklistType,
-			"value":                value,
-			"reason":               reason,
-			"created_by":           createdBy,
-			"created_by_username":  createdByUsername,
-			"created_at":           createdAt,
-			"updated_at":           updatedAt,
+			"id":                  id,
+			"type":                blacklistType,
+			"value":               value,
+			"reason":              reason,
+			"created_by":          createdBy,
+			"created_by_username": createdByUsername,
+			"created_at":          createdAt,
+			"updated_at":          updatedAt,
 		})
 	}
 
