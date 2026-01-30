@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"invite-backend/config"
+	"invite-backend/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -32,9 +33,18 @@ func AuthMiddleware() gin.HandlerFunc {
 
 				if err == nil && token.Valid {
 					if claims, ok := token.Claims.(jwt.MapClaims); ok {
-						c.Set("admin_id", int(claims["id"].(float64)))
+						adminID := int(claims["id"].(float64))
+						c.Set("admin_id", adminID)
 						c.Set("admin_username", claims["username"].(string))
 						c.Set("admin_role", claims["role"].(string))
+
+						// 从数据库获取权限信息
+						var permissions string
+						err := database.DB.QueryRow("SELECT permissions FROM admins WHERE id = ?", adminID).Scan(&permissions)
+						if err == nil {
+							c.Set("admin_permissions", permissions)
+						}
+
 						c.Next()
 						return
 					}
@@ -74,6 +84,56 @@ func RoleMiddleware(roles ...string) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// PermissionMiddleware 权限检查中间件
+func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		adminRole, roleExists := c.Get("admin_role")
+		if !roleExists {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "请登录后操作"})
+			c.Abort()
+			return
+		}
+
+		// 超级管理员拥有所有权限
+		if adminRole.(string) == "super" {
+			c.Next()
+			return
+		}
+
+		// 检查普通管理员的权限
+		permissions, permExists := c.Get("admin_permissions")
+		if !permExists {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "权限不足"})
+			c.Abort()
+			return
+		}
+
+		permStr := permissions.(string)
+		// 检查是否有 all 权限或包含所需权限
+		if permStr == "all" || contains(permStr, requiredPermission) {
+			c.Next()
+			return
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "权限不足，无法执行此操作"})
+		c.Abort()
+	}
+}
+
+// contains 检查逗号分隔的字符串中是否包含指定值
+func contains(permStr, target string) bool {
+	if permStr == "" {
+		return false
+	}
+	perms := strings.Split(permStr, ",")
+	for _, p := range perms {
+		if strings.TrimSpace(p) == target {
+			return true
+		}
+	}
+	return false
 }
 
 // UserAuthMiddleware 用户认证中间件

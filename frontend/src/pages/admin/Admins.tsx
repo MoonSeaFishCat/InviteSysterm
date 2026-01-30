@@ -269,6 +269,7 @@ export default function Admins() {
                   isDisabled={modalMode === 'edit'}
                   variant="bordered"
                   radius="lg"
+                  autoComplete="username"
                   startContent={<FaUserShield className="text-default-400" />}
                 />
                 <Input
@@ -279,6 +280,7 @@ export default function Admins() {
                   onValueChange={setPassword}
                   variant="bordered"
                   radius="lg"
+                  autoComplete="new-password"
                   startContent={<FaLock className="text-default-400" />}
                 />
                 <Select

@@ -494,6 +494,7 @@ export default function Settings() {
               variant="bordered"
               radius="lg"
               size="lg"
+              autoComplete="current-password"
             />
             <Divider />
             <Input
@@ -504,6 +505,7 @@ export default function Settings() {
               variant="bordered"
               radius="lg"
               size="lg"
+              autoComplete="username"
             />
             <Input
               label="新密码 (可选)"
@@ -514,6 +516,7 @@ export default function Settings() {
               variant="bordered"
               radius="lg"
               size="lg"
+              autoComplete="new-password"
             />
             <Input
               label="确认新密码"
@@ -525,6 +528,7 @@ export default function Settings() {
               radius="lg"
               size="lg"
               isDisabled={!newPassword}
+              autoComplete="new-password"
             />
           </ModalBody>
           <ModalFooter>

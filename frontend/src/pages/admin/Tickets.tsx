@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardBody, CardHeader, Button, Chip, Input, Select, SelectItem } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
-import { FaTicketAlt, FaPaperPlane, FaBan, FaSearch } from 'react-icons/fa';
+import { FaTicketAlt, FaPaperPlane, FaBan, FaSearch, FaTrash, FaRedo } from 'react-icons/fa';
 
 export default function Tickets() {
   const [tickets, setTickets] = useState<any[]>([]);
@@ -82,6 +82,32 @@ export default function Tickets() {
       setSelectedTicket({ ...selectedTicket, status: 'closed' });
     } catch (error) {
       toast.error("操作失败");
+    }
+  };
+
+  const handleReopenTicket = async () => {
+    try {
+      await api.post(`/admin/tickets/${selectedTicket.id}/reopen`);
+      toast.success("工单已重新打开");
+      fetchTickets();
+      setSelectedTicket({ ...selectedTicket, status: 'open' });
+    } catch (error) {
+      toast.error("操作失败");
+    }
+  };
+
+  const handleDeleteTicket = async () => {
+    if (!confirm('确定要删除这个工单吗？删除后无法恢复！')) {
+      return;
+    }
+    try {
+      await api.delete(`/admin/tickets/${selectedTicket.id}`);
+      toast.success("工单已删除");
+      setSelectedTicket(null);
+      setTicketMessages([]);
+      fetchTickets();
+    } catch (error) {
+      toast.error("删除失败");
     }
   };
 
@@ -187,11 +213,20 @@ export default function Tickets() {
                     来自：{selectedTicket.nickname ? `${selectedTicket.nickname} (${selectedTicket.email})` : selectedTicket.email}
                   </p>
                 </div>
-                {selectedTicket.status !== 'closed' && (
-                  <Button size="sm" color="danger" variant="flat" startContent={<FaBan />} onPress={handleCloseTicket}>
-                    关闭工单
+                <div className="flex gap-2">
+                  {selectedTicket.status === 'closed' ? (
+                    <Button size="sm" color="success" variant="flat" startContent={<FaRedo />} onPress={handleReopenTicket}>
+                      重新打开
+                    </Button>
+                  ) : (
+                    <Button size="sm" color="warning" variant="flat" startContent={<FaBan />} onPress={handleCloseTicket}>
+                      关闭工单
+                    </Button>
+                  )}
+                  <Button size="sm" color="danger" variant="flat" startContent={<FaTrash />} onPress={handleDeleteTicket}>
+                    删除
                   </Button>
-                )}
+                </div>
               </CardHeader>
             <CardBody className="flex-grow p-6 overflow-y-auto max-h-[450px] flex flex-col gap-4">
               {ticketMessages.map((msg) => (

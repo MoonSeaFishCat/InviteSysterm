@@ -2,29 +2,45 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  withCredentials: true,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('admin_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// 请求拦截器
+api.interceptors.request.use(
+  (config) => {
+    // 添加用户 token
+    const userToken = localStorage.getItem('user_token');
+    if (userToken) {
+      config.headers.Authorization = `Bearer ${userToken}`;
+    }
 
+    // 添加管理员 token
+    const adminToken = localStorage.getItem('admin_token');
+    if (adminToken) {
+      config.headers.Authorization = `Bearer ${adminToken}`;
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// 响应拦截器
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
+      // 未授权，清除 token 并跳转到登录页
+      localStorage.removeItem('user_token');
       localStorage.removeItem('admin_token');
-      // Only redirect if we are in admin area
-      if (window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin/login') {
-        window.location.href = '/admin/login';
-      }
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

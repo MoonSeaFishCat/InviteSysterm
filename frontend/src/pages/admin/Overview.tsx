@@ -100,75 +100,27 @@ export default function Overview() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm border border-divider">
-          <CardHeader className="px-6 py-4 border-b border-divider">
-            <h3 className="font-bold">快速操作</h3>
-          </CardHeader>
-          <CardBody className="p-6">
-            <div className="grid grid-cols-2 gap-4">
-              <Button 
-                color="primary" 
-                variant="flat" 
-                className="h-20 flex flex-col gap-2"
-                onPress={() => navigate('/admin?tab=applications')}
-              >
-                <FaPaperPlane />
-                <span>审核申请</span>
-              </Button>
-              <Button 
-                color="secondary" 
-                variant="flat" 
-                className="h-20 flex flex-col gap-2"
-                onPress={() => navigate('/admin?tab=tickets')}
-              >
-                <FaTicketAlt />
-                <span>处理工单</span>
-              </Button>
-              <Button 
-                color="success" 
-                variant="flat" 
-                className="h-20 flex flex-col gap-2"
-                onPress={() => navigate('/admin?tab=messages')}
-              >
-                <FaEnvelope />
-                <span>发送通知</span>
-              </Button>
-              <Button 
-                color="warning" 
-                variant="flat" 
-                className="h-20 flex flex-col gap-2"
-                onPress={() => navigate('/admin?tab=announcements')}
-              >
-                <FaSync />
-                <span>发布公告</span>
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card className="shadow-sm border border-divider">
-          <CardHeader className="px-6 py-4 border-b border-divider">
-            <h3 className="font-bold">系统信息</h3>
-          </CardHeader>
-          <CardBody className="p-6 flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <span className="text-default-500 text-sm">运行状态</span>
-              <Chip color="success" size="sm" variant="dot">正常运行中</Chip>
-            </div>
-            <Divider />
-            <div className="flex justify-between items-center">
-              <span className="text-default-500 text-sm">总申请量</span>
-              <span className="font-bold">{stats?.total_apps || 0}</span>
-            </div>
-            <Divider />
-            <div className="flex justify-between items-center">
-              <span className="text-default-500 text-sm">当前时间</span>
-              <span className="text-sm">{new Date().toLocaleString()}</span>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
+      <Card className="shadow-sm border border-divider">
+        <CardHeader className="px-6 py-4 border-b border-divider">
+          <h3 className="font-bold">系统信息</h3>
+        </CardHeader>
+        <CardBody className="p-6 flex flex-col gap-4">
+          <div className="flex justify-between items-center">
+            <span className="text-default-500 text-sm">运行状态</span>
+            <Chip color="success" size="sm" variant="dot">正常运行中</Chip>
+          </div>
+          <Divider />
+          <div className="flex justify-between items-center">
+            <span className="text-default-500 text-sm">总申请量</span>
+            <span className="font-bold">{stats?.total_apps || 0}</span>
+          </div>
+          <Divider />
+          <div className="flex justify-between items-center">
+            <span className="text-default-500 text-sm">当前时间</span>
+            <span className="text-sm">{new Date().toLocaleString()}</span>
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

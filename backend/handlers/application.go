@@ -69,6 +69,22 @@ func SubmitApplication(c *gin.Context) {
 	ip := c.ClientIP()
 	settings, _ := services.GetSystemSettings()
 
+	// 检查黑名单
+	if CheckBlacklist("email", email) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "该邮箱已被禁止申请"})
+		return
+	}
+
+	if CheckBlacklist("device", req.Fingerprint) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "该设备已被禁止申请"})
+		return
+	}
+
+	if CheckBlacklist("ip", ip) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "该IP已被禁止申请"})
+		return
+	}
+
 	// 1.5 检查申请是否开放
 	if settings["application_open"] == "false" {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "申请通道暂未开放，请稍后再试"})

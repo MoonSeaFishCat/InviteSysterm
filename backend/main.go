@@ -9,6 +9,7 @@ import (
 	"invite-backend/database"
 	"invite-backend/handlers"
 	"invite-backend/middleware"
+	"invite-backend/utils"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,9 @@ func init() {
 func main() {
 	// 加载配置
 	config.LoadConfig()
+
+	// 初始化密钥管理器（自动生成随机密钥并启动定期轮换）
+	utils.GetKeyManager()
 
 	// 设置 Gin 模式
 	if config.AppConfig.GinMode == "release" {
@@ -42,9 +46,9 @@ func main() {
 
 	// CORS 配置
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -58,6 +62,9 @@ func main() {
 	{
 		// 统计信息
 		api.GET("/stats", handlers.GetPublicStats)
+
+		// 获取加密密钥
+		api.GET("/security/key", handlers.GetSecurityKey)
 
 		// 验证码相关
 		api.POST("/verification-code", handlers.SendVerificationCode)
@@ -80,7 +87,10 @@ func main() {
 			userAuth := user.Group("", middleware.UserAuthMiddleware())
 			{
 				userAuth.GET("/profile", handlers.GetUserProfile)
+				userAuth.GET("/profile/stats", handlers.GetUserProfileStats)
 				userAuth.POST("/profile", handlers.UpdateUserProfile)
+				userAuth.PUT("/profile", handlers.UpdateUserProfile)
+				userAuth.PUT("/password", handlers.ChangeUserPassword)
 				userAuth.GET("/applications", handlers.GetUserApplications)
 				userAuth.POST("/application/submit", handlers.SubmitApplication)
 
@@ -99,6 +109,11 @@ func main() {
 
 		// 公告相关
 		api.GET("/announcements", handlers.GetAnnouncements)
+
+		// 密码重置相关
+		api.POST("/password/request-reset", handlers.RequestPasswordReset)
+		api.GET("/password/verify-token", handlers.VerifyResetToken)
+		api.POST("/password/reset", handlers.ResetPassword)
 
 		// 管理员路由
 		admin := api.Group("/admin")
@@ -129,6 +144,8 @@ func main() {
 				authenticated.GET("/tickets/:id/messages", handlers.GetTicketMessages) // 复用用户侧的详情获取，但需要管理员鉴权逻辑在 handler 中区分或新建
 				authenticated.POST("/tickets/:id/reply", handlers.AdminReplyTicket)
 				authenticated.POST("/tickets/:id/close", handlers.AdminCloseTicket)
+				authenticated.POST("/tickets/:id/reopen", handlers.AdminReopenTicket)
+				authenticated.DELETE("/tickets/:id", handlers.AdminDeleteTicket)
 
 				// 管理员站内信
 				authenticated.POST("/messages/send", handlers.AdminSendMessage)
@@ -153,6 +170,19 @@ func main() {
 					super.POST("/admins", handlers.AddAdmin)
 					super.DELETE("/admins/:id", handlers.DeleteAdmin)
 					super.PUT("/admins/:id", handlers.UpdateAdmin)
+
+					// 用户管理
+					super.GET("/all-users", handlers.GetAllUsers)
+					super.GET("/all-users/:id", handlers.GetUserDetail)
+					super.PUT("/all-users/:id/status", handlers.UpdateUserStatus)
+					super.DELETE("/all-users/:id", handlers.DeleteUser)
+					super.POST("/all-users/:id/reset-password", handlers.ResetUserPassword)
+
+					// 黑名单管理
+					super.GET("/blacklist", handlers.GetBlacklist)
+					super.POST("/blacklist", handlers.AddBlacklist)
+					super.PUT("/blacklist/:id", handlers.UpdateBlacklist)
+					super.DELETE("/blacklist/:id", handlers.DeleteBlacklist)
 
 					// 申请管理
 					super.DELETE("/applications/:id", handlers.DeleteApplication)

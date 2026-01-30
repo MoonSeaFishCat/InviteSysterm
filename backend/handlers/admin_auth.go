@@ -215,10 +215,9 @@ func LinuxDoCallback(c *gin.Context) {
 // AdminLogin 管理员登录
 func AdminLogin(c *gin.Context) {
 	var req struct {
-		Encrypted     string `json:"encrypted" binding:"required"`
-		Fingerprint   string `json:"fingerprint" binding:"required"`
-		Nonce         int    `json:"nonce" binding:"required"`
-		CaptchaAnswer string `json:"captchaAnswer" binding:"required"`
+		Encrypted   string `json:"encrypted" binding:"required"`
+		Fingerprint string `json:"fingerprint" binding:"required"`
+		Nonce       int    `json:"nonce" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -226,16 +225,7 @@ func AdminLogin(c *gin.Context) {
 		return
 	}
 
-	// 1. 验证验证码
-	storedAnswer, err := c.Cookie("captcha_answer")
-	if err != nil || storedAnswer != req.CaptchaAnswer {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "验证码错误"})
-		return
-	}
-	// 清除验证码 cookie
-	c.SetCookie("captcha_answer", "", -1, "/", "", false, true)
-
-	// 2. 解密数据
+	// 1. 解密数据
 	security := &utils.StarMoonSecurity{}
 	data, err := security.DecryptData(req.Encrypted, req.Fingerprint, req.Nonce)
 	if err != nil {
@@ -245,6 +235,35 @@ func AdminLogin(c *gin.Context) {
 
 	username, _ := data["username"].(string)
 	password, _ := data["password"].(string)
+
+	// 极验4.0 参数
+	lotNumber, _ := data["lot_number"].(string)
+	captchaOutput, _ := data["captcha_output"].(string)
+	passToken, _ := data["pass_token"].(string)
+	genTime, _ := data["gen_time"].(string)
+
+	settings, _ := services.GetSystemSettings()
+
+	// 2. 验证极验4.0（如果启用）
+	if settings["geetest_enabled"] == "true" {
+		if lotNumber == "" || captchaOutput == "" || passToken == "" || genTime == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请先完成人机验证"})
+			return
+		}
+		var ok bool
+		ok, err = utils.VerifyGeetestV4(
+			settings["geetest_id"],
+			settings["geetest_key"],
+			lotNumber,
+			captchaOutput,
+			passToken,
+			genTime,
+		)
+		if err != nil || !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "人机验证失败"})
+			return
+		}
+	}
 
 	fmt.Printf("Admin Login Attempt: username=%s, password_len=%d\n", username, len(password))
 

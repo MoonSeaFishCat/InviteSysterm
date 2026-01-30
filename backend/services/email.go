@@ -3,6 +3,7 @@ package services
 import (
 	"crypto/tls"
 	"fmt"
+	"time"
 
 	"gopkg.in/gomail.v2"
 )
@@ -27,6 +28,12 @@ func NewEmailService(host string, port int, user, password string) *EmailService
 
 // SendVerificationCode 发送验证码
 func (e *EmailService) SendVerificationCode(to, code string) error {
+	fmt.Printf("[DEBUG] 准备发送邮件 - To: %s, Code: %s\n", to, code)
+	fmt.Printf("[DEBUG] SMTP配置 - Host: %s, Port: %d, User: %s\n", e.Host, e.Port, e.User)
+
+	// 添加短暂延迟，避免触发阿里云反垃圾邮件机制
+	time.Sleep(2 * time.Second)
+
 	m := gomail.NewMessage()
 	m.SetHeader("From", e.User)
 	m.SetHeader("To", to)
@@ -88,10 +95,18 @@ func (e *EmailService) SendVerificationCode(to, code string) error {
 	// 同时设置纯文本备用
 	m.AddAlternative("text/plain", fmt.Sprintf("您的验证码是 %s，有效期 10 分钟。", code))
 
+	fmt.Printf("[DEBUG] 开始连接 SMTP 服务器...\n")
 	d := gomail.NewDialer(e.Host, e.Port, e.User, e.Password)
 	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 
-	return d.DialAndSend(m)
+	err := d.DialAndSend(m)
+	if err != nil {
+		fmt.Printf("[ERROR] SMTP 发送失败: %v\n", err)
+		return err
+	}
+
+	fmt.Printf("[DEBUG] 邮件发送成功\n")
+	return nil
 }
 
 // SendApprovalEmail 发送通过邮件
@@ -325,6 +340,80 @@ func (e *EmailService) SendRejectionEmail(to, reason string) error {
 © 2026 L站邀请码分发系统
 	`, reason)
 	m.AddAlternative("text/plain", textBody)
+
+	d := gomail.NewDialer(e.Host, e.Port, e.User, e.Password)
+	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+
+	return d.DialAndSend(m)
+}
+
+// SendPasswordResetEmail 发送密码重置邮件
+func (e *EmailService) SendPasswordResetEmail(to, token string) error {
+	m := gomail.NewMessage()
+	m.SetHeader("From", e.User)
+	m.SetHeader("To", to)
+	m.SetHeader("Subject", "🔐 密码重置请求 - L站邀请码申请系统")
+
+	// 构建重置链接（这里需要根据实际前端地址配置）
+	resetLink := fmt.Sprintf("http://localhost:5173/reset-password?token=%s", token)
+
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Arial', 'Microsoft YaHei', sans-serif; background-color: #fdfbf7; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 40px 30px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; }
+        .content { padding: 40px 30px; }
+        .reset-box { background: linear-gradient(135deg, #e0c3fc 0%%, #8ec5fc 100%%); border-radius: 12px; padding: 30px; text-align: center; margin: 30px 0; }
+        .reset-button { display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: #ffffff; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; margin: 20px 0; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); }
+        .reset-button:hover { opacity: 0.9; }
+        .tip { color: #6c757d; font-size: 14px; line-height: 1.6; margin: 20px 0; background: #f8f9fa; padding: 15px 20px; border-radius: 8px; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px 20px; margin: 20px 0; color: #856404; border-radius: 4px; }
+        .footer { background: #f8f9fa; padding: 20px 30px; text-align: center; color: #6c757d; font-size: 12px; border-top: 1px solid #e9ecef; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 密码重置</h1>
+        </div>
+        <div class="content">
+            <p style="font-size: 16px; color: #333; margin-bottom: 20px;">您好！</p>
+            <p style="color: #666; line-height: 1.8;">我们收到了您的密码重置请求。请点击下方按钮重置您的密码：</p>
+
+            <div class="reset-box">
+                <div style="color: #333; font-size: 14px; margin-bottom: 15px;">点击按钮重置密码</div>
+                <a href="%s" class="reset-button">重置密码</a>
+                <div style="color: #666; font-size: 12px; margin-top: 15px;">链接有效期 30 分钟</div>
+            </div>
+
+            <div class="warning">
+                <p style="margin: 5px 0;"><strong>⚠️ 安全提示：</strong></p>
+                <p style="margin: 5px 0;">• 如果您没有请求重置密码，请忽略此邮件</p>
+                <p style="margin: 5px 0;">• 请勿将此链接分享给任何人</p>
+                <p style="margin: 5px 0;">• 链接仅可使用一次</p>
+            </div>
+
+            <div class="tip">
+                <p style="margin: 5px 0;">如果按钮无法点击，请复制以下链接到浏览器：</p>
+                <p style="margin: 10px 0; word-break: break-all; color: #667eea;">%s</p>
+            </div>
+        </div>
+        <div class="footer">
+            <p style="margin: 5px 0;">此邮件由系统自动发送，请勿回复</p>
+            <p style="margin: 5px 0;">© 2026 L站邀请码分发系统</p>
+        </div>
+    </div>
+</body>
+</html>
+	`, resetLink, resetLink)
+
+	m.SetBody("text/html", htmlBody)
+	m.AddAlternative("text/plain", fmt.Sprintf("您的密码重置链接：%s\n\n链接有效期 30 分钟。如果您没有请求重置密码，请忽略此邮件。", resetLink))
 
 	d := gomail.NewDialer(e.Host, e.Port, e.User, e.Password)
 	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}

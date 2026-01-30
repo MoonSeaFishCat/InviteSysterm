@@ -79,6 +79,26 @@ func SendRegistrationCode(c *gin.Context) {
 		return
 	}
 
+	// 检查发送频率限制（防止阿里云反垃圾邮件限制）
+	var lastSendTime int64
+	err = database.DB.QueryRow(
+		"SELECT created_at FROM verification_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+		email,
+	).Scan(&lastSendTime)
+	
+	if err == nil {
+		// 如果上次发送时间在60秒内，则拒绝重复发送
+		timeSinceLastSend := time.Now().Unix() - lastSendTime
+		if timeSinceLastSend < 60 {
+			remainingTime := 60 - timeSinceLastSend
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"success": false, 
+				"message": fmt.Sprintf("发送过于频繁，请 %d 秒后再试", remainingTime),
+			})
+			return
+		}
+	}
+
 	// 生成验证码
 	code := fmt.Sprintf("%06d", rand.Intn(900000)+100000)
 	expiresAt := time.Now().Add(10 * time.Minute).Unix()
@@ -94,18 +114,29 @@ func SendRegistrationCode(c *gin.Context) {
 	}
 
 	// 发送邮件
+	fmt.Printf("[DEBUG] 开始发送邮件到: %s\n", email)
+	fmt.Printf("[DEBUG] SMTP配置 - Host: %s, Port: %s, User: %s\n", 
+		settings["smtp_host"], settings["smtp_port"], settings["smtp_user"])
+	
 	emailService, err := services.GetEmailService()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已发送（开发模式：" + code + "）"})
+		// 如果邮件服务未配置，返回开发模式提示（但仍然是 success: true）
+		fmt.Printf("[DEBUG] 邮件服务获取失败: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已生成（开发模式：" + code + "）", "dev_mode": true})
 		return
 	}
 
+	fmt.Printf("[DEBUG] 邮件服务初始化成功，开始发送验证码\n")
 	if err := emailService.SendVerificationCode(email, code); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "验证码发送失败"})
+		// 记录详细错误日志
+		fmt.Printf("[ERROR] 邮件发送失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("邮件发送失败: %v", err)})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已发送"})
+	fmt.Printf("[DEBUG] 验证码邮件发送成功\n")
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "验证码已发送至您的邮箱"})
 }
 
 // SendVerificationCode 发送验证码 (通用/申请)
@@ -262,6 +293,8 @@ func GetPublicStats(c *gin.Context) {
 		"isApplicationOpen": isOpen,
 		"siteName":          settings["site_name"],
 		"announcement":      settings["home_announcement"],
+		"geetest_id":        settings["geetest_id"],
+		"geetest_enabled":   settings["geetest_enabled"],
 	})
 }
 

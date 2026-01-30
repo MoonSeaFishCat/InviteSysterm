@@ -51,6 +51,12 @@ func UserRegister(c *gin.Context) {
 		return
 	}
 
+	// 检查邮箱黑名单
+	if CheckBlacklist("email", email) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "该邮箱已被禁止注册"})
+		return
+	}
+
 	settings, _ := services.GetSystemSettings()
 
 	// 验证极验4.0
@@ -262,6 +268,30 @@ func GetUserProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": user})
 }
 
+// GetUserProfileStats 获取用户统计信息
+func GetUserProfileStats(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var stats struct {
+		TotalApplications    int    `json:"total_applications"`
+		ApprovedApplications int    `json:"approved_applications"`
+		PendingApplications  int    `json:"pending_applications"`
+		RegisterDate         string `json:"register_date"`
+	}
+
+	// 获取申请统计
+	database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE user_id = ?", userID).Scan(&stats.TotalApplications)
+	database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE user_id = ? AND status = 'approved'", userID).Scan(&stats.ApprovedApplications)
+	database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE user_id = ? AND status = 'pending'", userID).Scan(&stats.PendingApplications)
+
+	// 获取注册日期
+	var createdAt int64
+	database.DB.QueryRow("SELECT created_at FROM users WHERE id = ?", userID).Scan(&createdAt)
+	stats.RegisterDate = time.Unix(createdAt, 0).Format("2006-01-02")
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": stats})
+}
+
 // UpdateUserProfile 更新用户信息
 func UpdateUserProfile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
@@ -310,4 +340,53 @@ func UpdateUserProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "更新成功"})
+}
+
+// ChangeUserPassword 修改用户密码
+func ChangeUserPassword(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if req.OldPassword == "" || req.NewPassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请填写完整信息"})
+		return
+	}
+
+	if len(req.NewPassword) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "新密码长度不能少于 6 位"})
+		return
+	}
+
+	// 验证旧密码
+	var currentPasswordHash string
+	err := database.DB.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&currentPasswordHash)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询用户信息失败"})
+		return
+	}
+
+	if !utils.CheckPassword(req.OldPassword, currentPasswordHash) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "当前密码错误"})
+		return
+	}
+
+	// 更新密码
+	newPasswordHash := utils.HashPassword(req.NewPassword)
+	now := time.Now().Unix()
+	_, err = database.DB.Exec("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", newPasswordHash, now, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新密码失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "密码修改成功"})
 }

@@ -230,6 +230,20 @@ func createTables() error {
 	CREATE INDEX IF NOT EXISTS idx_audit_logs_app ON audit_logs(application_id);
 	CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 	CREATE INDEX IF NOT EXISTS idx_verification_codes_email ON verification_codes(email);
+
+	CREATE TABLE IF NOT EXISTS blacklist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		type TEXT NOT NULL, -- email, device, ip
+		value TEXT NOT NULL,
+		reason TEXT,
+		created_by INTEGER REFERENCES admins(id),
+		created_by_username TEXT,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_blacklist_type_value ON blacklist(type, value);
+	CREATE INDEX IF NOT EXISTS idx_blacklist_value ON blacklist(value);
 	`
 
 	_, err := DB.Exec(schema)
@@ -252,6 +266,20 @@ func createTables() error {
 	// 添加性能索引
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_ip ON applications(ip)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_processed_by ON applications(processed_by)")
+
+	// 添加密码重置令牌表
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL,
+			token TEXT NOT NULL UNIQUE,
+			expires_at INTEGER NOT NULL,
+			used INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_email ON password_reset_tokens(email)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token)")
 
 	return nil
 }

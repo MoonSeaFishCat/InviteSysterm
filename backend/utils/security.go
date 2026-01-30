@@ -9,15 +9,33 @@ import (
 	"time"
 )
 
-const BASE_KEY = "star-moon-v2-hyper-secret"
-
 // StarMoonSecurity 星月御安全加密系统
 type StarMoonSecurity struct{}
 
 // DecryptData 解密并验证数据
 func (s *StarMoonSecurity) DecryptData(encryptedStr, fingerprint string, nonce int) (map[string]interface{}, error) {
-	dynamicKey := s.deriveDynamicKey(fingerprint, nonce)
+	km := GetKeyManager()
 
+	// 首先尝试使用当前密钥解密
+	data, err := s.decryptWithKey(encryptedStr, fingerprint, nonce, km.DeriveKey(fingerprint, nonce))
+	if err == nil {
+		return data, nil
+	}
+
+	// 如果失败，尝试使用上一个密钥解密（密钥轮换期间的兼容性）
+	previousKey := km.TryDeriveKeyWithPrevious(fingerprint, nonce)
+	if previousKey != "" {
+		data, err = s.decryptWithKey(encryptedStr, fingerprint, nonce, previousKey)
+		if err == nil {
+			return data, nil
+		}
+	}
+
+	return nil, fmt.Errorf("decryption failed with all available keys")
+}
+
+// decryptWithKey 使用指定密钥解密
+func (s *StarMoonSecurity) decryptWithKey(encryptedStr, fingerprint string, nonce int, dynamicKey string) (map[string]interface{}, error) {
 	// Base64 解码
 	encryptedBytes, err := base64.StdEncoding.DecodeString(encryptedStr)
 	if err != nil {
@@ -82,23 +100,13 @@ func (s *StarMoonSecurity) DecryptData(encryptedStr, fingerprint string, nonce i
 	return data, nil
 }
 
-// deriveDynamicKey 动态密钥生成
-func (s *StarMoonSecurity) deriveDynamicKey(fingerprint string, nonce int) string {
-	key := fmt.Sprintf("%s%s%d", BASE_KEY, fingerprint, nonce)
-
-	// 7 轮混淆
-	for i := 0; i < 7; i++ {
-		key = base64.StdEncoding.EncodeToString([]byte(key))
-		if len(key) > 32 {
-			key = key[:32]
-		}
-	}
-
-	return key
-}
-
 // HashPassword SHA256 密码哈希
 func HashPassword(password string) string {
 	hash := sha256.Sum256([]byte(password))
 	return fmt.Sprintf("%x", hash)
+}
+
+// CheckPassword 验证密码
+func CheckPassword(password, hash string) bool {
+	return HashPassword(password) == hash
 }

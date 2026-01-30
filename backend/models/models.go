@@ -72,3 +72,26 @@ type SystemSettings struct {
 	LinuxDoClientID          string `json:"linuxdo_client_id"`
 	LinuxDoClientSecret      string `json:"linuxdo_client_secret"`
 }
+
+// Blacklist 黑名单
+type Blacklist struct {
+	ID                int       `json:"id" db:"id"`
+	Type              string    `json:"type" db:"type"` // email, device, ip
+	Value             string    `json:"value" db:"value"`
+	Reason            string    `json:"reason" db:"reason"`
+	CreatedBy         int       `json:"createdBy" db:"created_by"`
+	CreatedByUsername string    `json:"createdByUsername" db:"created_by_username"`
+	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// User 用户
+type User struct {
+	ID           int       `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	PasswordHash string    `json:"-" db:"password_hash"`
+	Nickname     string    `json:"nickname" db:"nickname"`
+	Status       string    `json:"status" db:"status"` // active, banned
+	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+}

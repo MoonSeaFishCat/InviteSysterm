@@ -281,3 +281,47 @@ func AdminCloseTicket(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "工单已关闭"})
 }
+
+// AdminReopenTicket 管理员重新打开工单
+func AdminReopenTicket(c *gin.Context) {
+	ticketID := c.Param("id")
+	now := time.Now().Unix()
+
+	_, err := database.DB.Exec("UPDATE tickets SET status = 'open', updated_at = ? WHERE id = ?", now, ticketID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "操作失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "工单已重新打开"})
+}
+
+// AdminDeleteTicket 管理员删除工单
+func AdminDeleteTicket(c *gin.Context) {
+	ticketID := c.Param("id")
+
+	// 开启事务
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "数据库错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	// 删除工单相关的消息
+	_, err = tx.Exec("DELETE FROM ticket_messages WHERE ticket_id = ?", ticketID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除消息失败"})
+		return
+	}
+
+	// 删除工单
+	_, err = tx.Exec("DELETE FROM tickets WHERE id = ?", ticketID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除工单失败"})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "工单已删除"})
+}

@@ -131,16 +131,22 @@ export default function UserLogin() {
                 startContent={<FaLock className="text-default-400" />}
               />
               
-              <Button 
+              <Button
                 type="submit"
-                color="primary" 
+                color="primary"
                 className="w-full mt-2 h-14 text-lg font-bold shadow-sm"
                 isLoading={loading}
               >
                 登录
               </Button>
 
-              <div className="text-center mt-2">
+              <div className="flex justify-between items-center mt-2">
+                <Link as={RouterLink} to="/forgot-password" color="primary" className="text-sm font-medium">
+                  忘记密码？
+                </Link>
+              </div>
+
+              <div className="text-center">
                 <p className="text-sm text-default-500">
                   还没有账号？{' '}
                   <Link as={RouterLink} to="/register" color="primary" className="font-bold">

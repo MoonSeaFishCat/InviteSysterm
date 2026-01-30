@@ -763,3 +763,375 @@ func UpdateAdmin(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员信息已更新"})
 }
+
+// ==================== 用户管理 ====================
+
+// GetAllUsers 获取所有用户
+func GetAllUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	status := c.Query("status")
+	search := c.Query("search")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// 构建查询
+	baseQuery := "FROM users WHERE 1=1"
+	var args []interface{}
+
+	if status != "" {
+		baseQuery += " AND status = ?"
+		args = append(args, status)
+	}
+
+	if search != "" {
+		baseQuery += " AND (email LIKE ? OR nickname LIKE ?)"
+		args = append(args, "%"+search+"%", "%"+search+"%")
+	}
+
+	// 获取总数
+	var total int
+	countQuery := "SELECT COUNT(*) " + baseQuery
+	database.DB.QueryRow(countQuery, args...).Scan(&total)
+
+	// 获取列表
+	offset := (page - 1) * pageSize
+	query := "SELECT id, email, nickname, status, created_at, updated_at " + baseQuery + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var email, nickname, status string
+		var createdAt, updatedAt int64
+		if err := rows.Scan(&id, &email, &nickname, &status, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+		users = append(users, map[string]interface{}{
+			"id":         id,
+			"email":      email,
+			"nickname":   nickname,
+			"status":     status,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":  true,
+		"data":     users,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
+// GetUserDetail 获取用户详情
+func GetUserDetail(c *gin.Context) {
+	id := c.Param("id")
+
+	var user struct {
+		ID        int    `json:"id"`
+		Email     string `json:"email"`
+		Nickname  string `json:"nickname"`
+		Status    string `json:"status"`
+		CreatedAt int64  `json:"created_at"`
+		UpdatedAt int64  `json:"updated_at"`
+	}
+
+	err := database.DB.QueryRow(
+		"SELECT id, email, nickname, status, created_at, updated_at FROM users WHERE id = ?",
+		id,
+	).Scan(&user.ID, &user.Email, &user.Nickname, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		return
+	}
+
+	// 获取用户的申请记录
+	rows, err := database.DB.Query(
+		"SELECT id, email, reason, status, device_id, ip, created_at FROM applications WHERE user_id = ? ORDER BY created_at DESC",
+		id,
+	)
+	if err == nil {
+		defer rows.Close()
+		var applications []map[string]interface{}
+		for rows.Next() {
+			var appID int
+			var email, reason, status, deviceID, ip string
+			var createdAt int64
+			if err := rows.Scan(&appID, &email, &reason, &status, &deviceID, &ip, &createdAt); err == nil {
+				applications = append(applications, map[string]interface{}{
+					"id":         appID,
+					"email":      email,
+					"reason":     reason,
+					"status":     status,
+					"device_id":  deviceID,
+					"ip":         ip,
+					"created_at": createdAt,
+				})
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "user": user, "applications": applications})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
+}
+
+// UpdateUserStatus 更新用户状态
+func UpdateUserStatus(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != "active" && req.Status != "banned" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "状态值无效"})
+		return
+	}
+
+	_, err := database.DB.Exec(
+		"UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
+		req.Status, time.Now().Unix(), id,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户状态已更新"})
+}
+
+// DeleteUser 删除用户
+func DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+
+	// 检查用户是否存在
+	var count int
+	database.DB.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", id).Scan(&count)
+	if count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		return
+	}
+
+	// 删除用户
+	_, err := database.DB.Exec("DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户已删除"})
+}
+
+// ResetUserPassword 重置用户密码
+func ResetUserPassword(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		NewPassword string `json:"newPassword" binding:"required,min=6"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "密码至少6个字符"})
+		return
+	}
+
+	passwordHash := utils.HashPassword(req.NewPassword)
+	_, err := database.DB.Exec(
+		"UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+		passwordHash, time.Now().Unix(), id,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "重置失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "密码已重置"})
+}
+
+// ==================== 黑名单管理 ====================
+
+// GetBlacklist 获取黑名单列表
+func GetBlacklist(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	blacklistType := c.Query("type")
+	search := c.Query("search")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// 构建查询
+	baseQuery := "FROM blacklist WHERE 1=1"
+	var args []interface{}
+
+	if blacklistType != "" {
+		baseQuery += " AND type = ?"
+		args = append(args, blacklistType)
+	}
+
+	if search != "" {
+		baseQuery += " AND (value LIKE ? OR reason LIKE ?)"
+		args = append(args, "%"+search+"%", "%"+search+"%")
+	}
+
+	// 获取总数
+	var total int
+	countQuery := "SELECT COUNT(*) " + baseQuery
+	database.DB.QueryRow(countQuery, args...).Scan(&total)
+
+	// 获取列表
+	offset := (page - 1) * pageSize
+	query := "SELECT id, type, value, reason, created_by, created_by_username, created_at, updated_at " + baseQuery + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	var blacklist []map[string]interface{}
+	for rows.Next() {
+		var id, createdBy int
+		var blacklistType, value, reason, createdByUsername string
+		var createdAt, updatedAt int64
+		if err := rows.Scan(&id, &blacklistType, &value, &reason, &createdBy, &createdByUsername, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+		blacklist = append(blacklist, map[string]interface{}{
+			"id":                   id,
+			"type":                 blacklistType,
+			"value":                value,
+			"reason":               reason,
+			"created_by":           createdBy,
+			"created_by_username":  createdByUsername,
+			"created_at":           createdAt,
+			"updated_at":           updatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":  true,
+		"data":     blacklist,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
+// AddBlacklist 添加黑名单
+func AddBlacklist(c *gin.Context) {
+	var req struct {
+		Type   string `json:"type" binding:"required"`
+		Value  string `json:"value" binding:"required"`
+		Reason string `json:"reason"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	// 验证类型
+	if req.Type != "email" && req.Type != "device" && req.Type != "ip" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "类型必须是 email, device 或 ip"})
+		return
+	}
+
+	// 获取当前管理员信息
+	adminID, _ := c.Get("admin_id")
+	adminUsername, _ := c.Get("admin_username")
+
+	// 检查是否已存在
+	var count int
+	database.DB.QueryRow("SELECT COUNT(*) FROM blacklist WHERE type = ? AND value = ?", req.Type, req.Value).Scan(&count)
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该项已在黑名单中"})
+		return
+	}
+
+	// 添加到黑名单
+	_, err := database.DB.Exec(
+		"INSERT INTO blacklist (type, value, reason, created_by, created_by_username, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		req.Type, req.Value, req.Reason, adminID, adminUsername, time.Now().Unix(), time.Now().Unix(),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "添加失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "已添加到黑名单"})
+}
+
+// UpdateBlacklist 更新黑名单
+func UpdateBlacklist(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Reason string `json:"reason"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	_, err := database.DB.Exec(
+		"UPDATE blacklist SET reason = ?, updated_at = ? WHERE id = ?",
+		req.Reason, time.Now().Unix(), id,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "黑名单已更新"})
+}
+
+// DeleteBlacklist 删除黑名单
+func DeleteBlacklist(c *gin.Context) {
+	id := c.Param("id")
+
+	_, err := database.DB.Exec("DELETE FROM blacklist WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "已从黑名单移除"})
+}
+
+// CheckBlacklist 检查是否在黑名单中（内部使用）
+func CheckBlacklist(blacklistType, value string) bool {
+	var count int
+	database.DB.QueryRow("SELECT COUNT(*) FROM blacklist WHERE type = ? AND value = ?", blacklistType, value).Scan(&count)
+	return count > 0
+}

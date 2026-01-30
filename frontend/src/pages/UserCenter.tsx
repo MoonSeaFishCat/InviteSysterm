@@ -310,6 +310,7 @@ export default function UserCenter() {
                         variant="bordered"
                         value={newNickname}
                         onValueChange={setNewNickname}
+                        autoComplete="nickname"
                       />
                     </div>
                     <div className="space-y-2">
@@ -320,6 +321,7 @@ export default function UserCenter() {
                         variant="bordered"
                         value={newPassword}
                         onValueChange={setNewPassword}
+                        autoComplete="new-password"
                       />
                       <p className="text-tiny text-default-400">密码长度不少于 6 位</p>
                     </div>
