@@ -102,7 +102,7 @@ export default function Applications() {
       const fingerprint = getDeviceId();
       const payload = { email: userInfo.email, reason };
 
-      const encrypted = StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
       const res = await api.post('/user/application/submit', {
         encrypted,
         fingerprint,

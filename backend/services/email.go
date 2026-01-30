@@ -3,6 +3,7 @@ package services
 import (
 	"crypto/tls"
 	"fmt"
+	"invite-backend/config"
 	"time"
 
 	"gopkg.in/gomail.v2"
@@ -354,8 +355,8 @@ func (e *EmailService) SendPasswordResetEmail(to, token string) error {
 	m.SetHeader("To", to)
 	m.SetHeader("Subject", "🔐 密码重置请求 - L站邀请码申请系统")
 
-	// 构建重置链接（这里需要根据实际前端地址配置）
-	resetLink := fmt.Sprintf("http://localhost:5173/reset-password?token=%s", token)
+	// 构建重置链接（从配置中读取前端地址）
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.AppConfig.FrontendURL, token)
 
 	htmlBody := fmt.Sprintf(`
 <!DOCTYPE html>

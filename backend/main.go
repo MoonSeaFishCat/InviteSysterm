@@ -9,6 +9,7 @@ import (
 	"invite-backend/database"
 	"invite-backend/handlers"
 	"invite-backend/middleware"
+	"invite-backend/services"
 	"invite-backend/utils"
 
 	"github.com/gin-contrib/cors"
@@ -36,6 +37,9 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// 启动申请锁定管理器的清理协程
+	services.GetLockManager().StartCleanupRoutine()
+
 	// 创建 Gin 引擎
 	r := gin.New() // 使用 New 而不是 Default，避免重复注册中间件
 	r.Use(gin.Logger(), gin.Recovery())
@@ -44,15 +48,37 @@ func main() {
 	// 默认信任本地环回地址，这样可以获取到 X-Forwarded-For 等头部的真实 IP
 	r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
+	// 添加机器人拦截中间件（全局）
+	r.Use(middleware.BotBlockerMiddleware())
+
+	// 添加 X-Robots-Tag 响应头（全局禁止搜索引擎收录）
+	r.Use(middleware.NoIndexMiddleware())
+
 	// CORS 配置
+	allowedOrigins := []string{config.AppConfig.FrontendURL}
+	// 开发环境额外允许的地址
+	if config.AppConfig.GinMode == "debug" {
+		allowedOrigins = append(allowedOrigins,
+			"http://localhost:5173",
+			"http://localhost:3000",
+			"http://localhost:5174",
+			"http://127.0.0.1:5173",
+			"http://127.0.0.1:3000",
+		)
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:3000"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// 安全相关路由（robots.txt, security.txt）
+	r.GET("/robots.txt", handlers.RobotsTxt)
+	r.GET("/.well-known/security.txt", handlers.SecurityTxt)
 
 	// 公开 API 路由
 	api := r.Group("/api")
@@ -117,9 +143,13 @@ func main() {
 
 		// 管理员路由
 		admin := api.Group("/admin")
+		// 管理后台专用速率限制（更严格）
+		adminLimiter := middleware.NewRateLimiter(30, time.Minute)
+		admin.Use(adminLimiter.Middleware())
 		{
-			// 登录登出
-			admin.POST("/login", handlers.AdminLogin)
+			// 登录登出（额外的登录速率限制）
+			loginLimiter := middleware.NewRateLimiter(5, 5*time.Minute)
+			admin.POST("/login", loginLimiter.Middleware(), handlers.AdminLogin)
 			admin.POST("/logout", handlers.AdminLogout)
 
 			// Linux DO 登录
@@ -132,6 +162,9 @@ func main() {
 				// 所有管理员都能访问的
 				authenticated.GET("/stats", handlers.AdminGetStats)
 				authenticated.GET("/applications", handlers.GetApplications)
+				authenticated.GET("/applications/:id", handlers.GetApplicationDetail)
+				authenticated.POST("/applications/:id/unlock", handlers.UnlockApplication)
+				authenticated.POST("/applications/:id/refresh-lock", handlers.RefreshLock)
 				authenticated.POST("/review", handlers.ReviewApplication)
 				authenticated.POST("/applications/batch-review", handlers.AdminBatchReviewApplications)
 				authenticated.POST("/applications/batch-delete", handlers.AdminBatchDeleteApplications)
@@ -152,6 +185,10 @@ func main() {
 				authenticated.POST("/messages/batch-send", handlers.AdminBatchSendMessage)
 				authenticated.GET("/messages/history", handlers.AdminGetAllMessages)
 
+				// 管理员交流空间
+				authenticated.GET("/chat/messages", handlers.GetAdminChatMessages)
+				authenticated.POST("/chat/messages", handlers.SendAdminChatMessage)
+
 				// 只有超级管理员能访问的
 				super := authenticated.Group("", middleware.RoleMiddleware("super"))
 				{
@@ -170,6 +207,7 @@ func main() {
 					super.POST("/admins", handlers.AddAdmin)
 					super.DELETE("/admins/:id", handlers.DeleteAdmin)
 					super.PUT("/admins/:id", handlers.UpdateAdmin)
+					super.POST("/admins/batch-update-permissions", handlers.BatchUpdateAdminPermissions)
 
 					// 用户管理
 					super.GET("/all-users", handlers.GetAllUsers)
@@ -186,6 +224,13 @@ func main() {
 
 					// 申请管理
 					super.DELETE("/applications/:id", handlers.DeleteApplication)
+
+					// 管理员聊天消息管理（仅超级管理员）
+					super.DELETE("/chat/messages/:id", handlers.DeleteAdminChatMessage)
+					super.PUT("/chat/messages/:id/pin", handlers.PinAdminChatMessage)
+					super.PUT("/chat/messages/:id/unpin", handlers.UnpinAdminChatMessage)
+					super.PUT("/chat/messages/:id/feature", handlers.FeatureAdminChatMessage)
+					super.PUT("/chat/messages/:id/unfeature", handlers.UnfeatureAdminChatMessage)
 				}
 			}
 		}

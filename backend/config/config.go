@@ -14,6 +14,7 @@ type Config struct {
 	GinMode       string
 	AdminPassword string
 	AdminUsername string
+	FrontendURL   string
 }
 
 var AppConfig *Config
@@ -30,9 +31,10 @@ func LoadConfig() {
 		GinMode:       getEnv("GIN_MODE", "debug"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
+		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:5173"),
 	}
 
-	log.Printf("Config loaded: Port=%s, DBPath=%s, Mode=%s, AdminUsername=%s\n", AppConfig.Port, AppConfig.DBPath, AppConfig.GinMode, AppConfig.AdminUsername)
+	log.Printf("Config loaded: Port=%s, DBPath=%s, Mode=%s, AdminUsername=%s, FrontendURL=%s\n", AppConfig.Port, AppConfig.DBPath, AppConfig.GinMode, AppConfig.AdminUsername, AppConfig.FrontendURL)
 }
 
 func getEnv(key, defaultValue string) string {

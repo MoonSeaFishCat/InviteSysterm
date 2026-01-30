@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../api/client';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -25,7 +25,7 @@ const ResetPassword = () => {
     // 验证令牌
     const verifyToken = async () => {
       try {
-        const response = await axios.get(`http://localhost:8080/api/password/verify-token?token=${token}`);
+        const response = await api.get(`/password/verify-token?token=${token}`);
         if (response.data.success) {
           setTokenValid(true);
           setEmail(response.data.email);
@@ -64,7 +64,7 @@ const ResetPassword = () => {
 
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:8080/api/password/reset', {
+      const response = await api.post('/password/reset', {
         token,
         newPassword,
       });

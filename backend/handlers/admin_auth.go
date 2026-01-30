@@ -166,19 +166,25 @@ func LinuxDoCallback(c *gin.Context) {
 			return
 		}
 
+		// 获取默认审核员权限
+		defaultPermissions := settings["default_reviewer_permissions"]
+		if defaultPermissions == "" {
+			defaultPermissions = "applications,tickets,messages" // 默认权限
+		}
+
 		// 如果不存在，则创建（默认 role 为 reviewer）
 		now := time.Now().Unix()
 		var res sql.Result
 		res, err = database.DB.Exec(
-			"INSERT INTO admins (username, password_hash, role, linuxdo_id, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?)",
-			userInfo.Username, linuxDoID, now, now,
+			"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?, ?)",
+			userInfo.Username, linuxDoID, defaultPermissions, now, now,
 		)
 		if err != nil {
 			fmt.Printf("First insert failed: %v\n", err)
 			// 如果用户名冲突（可能已被其他管理员手动注册），则尝试加后缀
 			res, err = database.DB.Exec(
-				"INSERT INTO admins (username, password_hash, role, linuxdo_id, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?)",
-				userInfo.Username+"_ld", linuxDoID, now, now,
+				"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?, ?)",
+				userInfo.Username+"_ld", linuxDoID, defaultPermissions, now, now,
 			)
 			if err != nil {
 				fmt.Printf("Second insert failed: %v\n", err)

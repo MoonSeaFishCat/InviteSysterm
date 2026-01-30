@@ -244,12 +244,30 @@ func createTables() error {
 
 	CREATE INDEX IF NOT EXISTS idx_blacklist_type_value ON blacklist(type, value);
 	CREATE INDEX IF NOT EXISTS idx_blacklist_value ON blacklist(value);
+
+	CREATE TABLE IF NOT EXISTS admin_chat_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		admin_id INTEGER NOT NULL REFERENCES admins(id),
+		admin_username TEXT NOT NULL,
+		admin_role TEXT NOT NULL,
+		message TEXT NOT NULL,
+		is_pinned INTEGER NOT NULL DEFAULT 0,
+		is_featured INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_admin_chat_created ON admin_chat_messages(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_admin_chat_admin ON admin_chat_messages(admin_id);
+	CREATE INDEX IF NOT EXISTS idx_admin_chat_pinned ON admin_chat_messages(is_pinned DESC, created_at DESC);
 	`
 
 	_, err := DB.Exec(schema)
 	if err != nil {
 		return err
 	}
+
+	// 检查并添加 permissions 字段到 admins 表
+	_, _ = DB.Exec("ALTER TABLE admins ADD COLUMN permissions TEXT DEFAULT ''")
 
 	// 检查并添加 linuxdo_id 字段
 	_, _ = DB.Exec("ALTER TABLE admins ADD COLUMN linuxdo_id TEXT")
@@ -262,6 +280,11 @@ func createTables() error {
 
 	// 检查并添加 user_id 字段到 applications
 	_, _ = DB.Exec("ALTER TABLE applications ADD COLUMN user_id INTEGER")
+
+	// 检查并添加聊天消息的置顶和加精字段
+	_, _ = DB.Exec("ALTER TABLE admin_chat_messages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE admin_chat_messages ADD COLUMN is_featured INTEGER NOT NULL DEFAULT 0")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_admin_chat_pinned ON admin_chat_messages(is_pinned DESC, created_at DESC)")
 
 	// 添加性能索引
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_applications_ip ON applications(ip)")
@@ -286,26 +309,27 @@ func createTables() error {
 
 func initDefaultSettings() error {
 	defaultSettings := map[string]string{
-		"application_open":            "true",
-		"risk_control_enabled":        "true",
-		"max_applications_per_email":  "1",
-		"max_applications_per_device": "1",
-		"max_applications_per_ip":     "3",
-		"smtp_host":                   "",
-		"smtp_port":                   "465",
-		"smtp_user":                   "",
-		"smtp_pass":                   "",
-		"site_name":                   "小汐的邀请码申请系统",
-		"home_announcement":           "欢迎来到小汐的邀请码申请系统，请认真填写您的申请理由，我们将用心审核每一份申请。\nPS：小汐也不知道项目会运行多久 一切随缘（确信）大概率应该是小汐跌出三级？",
-		"linuxdo_client_id":           "",
-		"linuxdo_client_secret":       "",
-		"linuxdo_min_trust_level":     "3",
-		"allow_auto_admin_reg":        "true",
-		"email_whitelist":             "", // 留空表示不限制，多个用逗号分隔，如 @gmail.com,test@example.com
-		"geetest_id":                  "",
-		"geetest_key":                 "",
-		"geetest_enabled":             "false",
-		"reg_email_verify_enabled":    "true",
+		"application_open":             "true",
+		"risk_control_enabled":         "true",
+		"max_applications_per_email":   "1",
+		"max_applications_per_device":  "1",
+		"max_applications_per_ip":      "3",
+		"smtp_host":                    "",
+		"smtp_port":                    "465",
+		"smtp_user":                    "",
+		"smtp_pass":                    "",
+		"site_name":                    "小汐的邀请码申请系统",
+		"home_announcement":            "欢迎来到小汐的邀请码申请系统，请认真填写您的申请理由，我们将用心审核每一份申请。\nPS：小汐也不知道项目会运行多久 一切随缘（确信）大概率应该是小汐跌出三级？",
+		"linuxdo_client_id":            "",
+		"linuxdo_client_secret":        "",
+		"linuxdo_min_trust_level":      "3",
+		"allow_auto_admin_reg":         "true",
+		"default_reviewer_permissions": "applications,tickets,messages", // 默认审核员权限
+		"email_whitelist":              "",                              // 留空表示不限制，多个用逗号分隔，如 @gmail.com,test@example.com
+		"geetest_id":                   "",
+		"geetest_key":                  "",
+		"geetest_enabled":              "false",
+		"reg_email_verify_enabled":     "true",
 	}
 
 	for key, value := range defaultSettings {

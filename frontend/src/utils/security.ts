@@ -1,3 +1,5 @@
+import api from '../api/client';
+
 // 密钥缓存
 let cachedKey: string | null = null;
 let keyFetchTime: number = 0;
@@ -14,8 +16,8 @@ export class StarMoonSecurity {
     }
 
     try {
-      const response = await fetch('http://localhost:8080/api/security/key');
-      const data = await response.json();
+      const response = await api.get('/security/key');
+      const data = response.data;
 
       if (data.success && data.key) {
         cachedKey = data.key;

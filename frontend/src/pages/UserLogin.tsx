@@ -61,7 +61,7 @@ export default function UserLogin() {
       }
 
       const finalPayload = captchaResult ? { ...payload, ...captchaResult } : payload;
-      const encrypted = StarMoonSecurity.encryptData(finalPayload, fingerprint, nonce);
+      const encrypted = await StarMoonSecurity.encryptData(finalPayload, fingerprint, nonce);
 
       const res = await api.post('/user/login', { 
         encrypted,

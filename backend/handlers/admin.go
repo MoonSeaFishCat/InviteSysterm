@@ -31,8 +31,8 @@ func GetApplications(c *gin.Context) {
 
 	// 基础查询
 	baseQuery := `
-		FROM applications a 
-		LEFT JOIN admins ad ON a.processed_by = ad.id 
+		FROM applications a
+		LEFT JOIN admins ad ON a.processed_by = ad.id
 		WHERE 1=1`
 	var args []interface{}
 
@@ -56,11 +56,11 @@ func GetApplications(c *gin.Context) {
 
 	// 获取分页数据
 	query := `
-		SELECT 
-			a.id, a.email, a.reason, a.status, a.device_id, a.ip, 
-			a.created_at, a.updated_at, a.admin_note, a.review_opinion, 
+		SELECT
+			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
 			a.processed_by, ad.username as admin_username ` + baseQuery + `
-		ORDER BY a.created_at DESC 
+		ORDER BY a.created_at DESC
 		LIMIT ? OFFSET ?`
 
 	dataArgs := append(args, pageSize, (page-1)*pageSize)
@@ -114,6 +114,156 @@ func GetApplications(c *gin.Context) {
 	})
 }
 
+// GetApplicationDetail 获取申请详情（包括历史记录）
+func GetApplicationDetail(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的申请ID"})
+		return
+	}
+
+	// 获取当前管理员信息
+	adminID, _ := c.Get("admin_id")
+	adminName, _ := c.Get("admin_username")
+	currentAdminID := adminID.(int)
+	currentAdminName := adminName.(string)
+
+	// 检查是否被其他管理员锁定
+	lockManager := services.GetLockManager()
+	isLocked, lock := lockManager.IsLocked(id, currentAdminID)
+	if isLocked {
+		c.JSON(http.StatusLocked, gin.H{
+			"success":  false,
+			"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
+			"locked":   true,
+			"lockedBy": lock.AdminName,
+		})
+		return
+	}
+
+	// 尝试锁定申请
+	if !lockManager.LockApplication(id, currentAdminID, currentAdminName) {
+		lock := lockManager.GetLock(id)
+		c.JSON(http.StatusLocked, gin.H{
+			"success":  false,
+			"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
+			"locked":   true,
+			"lockedBy": lock.AdminName,
+		})
+		return
+	}
+
+	// 获取当前申请详情
+	var app models.Application
+	var createdAtVal, updatedAtVal interface{}
+	var adminNote, reviewOpinion, adminUsername sql.NullString
+	var processedBy sql.NullInt64
+
+	err = database.DB.QueryRow(`
+		SELECT
+			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
+			a.processed_by, ad.username as admin_username
+		FROM applications a
+		LEFT JOIN admins ad ON a.processed_by = ad.id
+		WHERE a.id = ?
+	`, id).Scan(
+		&app.ID, &app.Email, &app.Reason, &app.Status,
+		&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
+		&processedBy, &adminUsername,
+	)
+
+	if err != nil {
+		// 解锁
+		lockManager.UnlockApplication(id, currentAdminID)
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
+		return
+	}
+
+	app.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
+	app.UpdatedAt = time.Unix(database.ToUnixTimestamp(updatedAtVal), 0)
+	if adminNote.Valid {
+		app.AdminNote = adminNote.String
+	}
+	if reviewOpinion.Valid {
+		app.ReviewOpinion = reviewOpinion.String
+	}
+	if processedBy.Valid {
+		id := int(processedBy.Int64)
+		app.ProcessedBy = &id
+	}
+	if adminUsername.Valid {
+		app.AdminUsername = adminUsername.String
+	}
+
+	// 获取同一邮箱或设备的历史申请记录
+	historyQuery := `
+		SELECT
+			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
+			a.processed_by, ad.username as admin_username
+		FROM applications a
+		LEFT JOIN admins ad ON a.processed_by = ad.id
+		WHERE (a.email = ? OR a.device_id = ?) AND a.id != ?
+		ORDER BY a.created_at DESC
+		LIMIT 20
+	`
+
+	rows, err := database.DB.Query(historyQuery, app.Email, app.DeviceID, app.ID)
+	if err != nil {
+		// 如果查询历史失败，仍然返回当前申请信息
+		c.JSON(http.StatusOK, gin.H{
+			"success":     true,
+			"application": app,
+			"history":     []models.Application{},
+		})
+		return
+	}
+	defer rows.Close()
+
+	var history []models.Application
+	for rows.Next() {
+		var histApp models.Application
+		var hCreatedAtVal, hUpdatedAtVal interface{}
+		var hAdminNote, hReviewOpinion, hAdminUsername sql.NullString
+		var hProcessedBy sql.NullInt64
+
+		err := rows.Scan(
+			&histApp.ID, &histApp.Email, &histApp.Reason, &histApp.Status,
+			&histApp.DeviceID, &histApp.IP, &hCreatedAtVal, &hUpdatedAtVal, &hAdminNote, &hReviewOpinion,
+			&hProcessedBy, &hAdminUsername,
+		)
+		if err != nil {
+			continue
+		}
+
+		histApp.CreatedAt = time.Unix(database.ToUnixTimestamp(hCreatedAtVal), 0)
+		histApp.UpdatedAt = time.Unix(database.ToUnixTimestamp(hUpdatedAtVal), 0)
+		if hAdminNote.Valid {
+			histApp.AdminNote = hAdminNote.String
+		}
+		if hReviewOpinion.Valid {
+			histApp.ReviewOpinion = hReviewOpinion.String
+		}
+		if hProcessedBy.Valid {
+			id := int(hProcessedBy.Int64)
+			histApp.ProcessedBy = &id
+		}
+		if hAdminUsername.Valid {
+			histApp.AdminUsername = hAdminUsername.String
+		}
+
+		history = append(history, histApp)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":     true,
+		"application": app,
+		"history":     history,
+	})
+}
+
 // ReviewApplication 审核申请
 func ReviewApplication(c *gin.Context) {
 	var req struct {
@@ -131,14 +281,30 @@ func ReviewApplication(c *gin.Context) {
 		return
 	}
 
+	// 获取当前管理员信息
+	adminID, _ := c.Get("admin_id")
+	currentAdminID := adminID.(int)
+
+	// 检查锁定状态
+	lockManager := services.GetLockManager()
+	isLocked, lock := lockManager.IsLocked(req.AppID, currentAdminID)
+	if isLocked {
+		c.JSON(http.StatusLocked, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("该申请正在被 %s 审核中，无法提交", lock.AdminName),
+		})
+		return
+	}
+
 	if req.Status != "approved" && req.Status != "rejected" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "状态值错误"})
 		return
 	}
 
-	// 获取申请信息
+	// 获取申请信息（包括用户ID，用于发送站内信）
 	var email string
-	err := database.DB.QueryRow("SELECT email FROM applications WHERE id = ?", req.AppID).Scan(&email)
+	var userID sql.NullInt64
+	err := database.DB.QueryRow("SELECT email, user_id FROM applications WHERE id = ?", req.AppID).Scan(&email, &userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
 		return
@@ -152,13 +318,13 @@ func ReviewApplication(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	// 获取管理员 ID
-	adminID, _ := c.Get("admin_id")
+	// 获取管理员 ID（复用之前的变量）
+	adminIDForUpdate := adminID
 
 	// 更新申请状态
 	_, err = tx.Exec(
 		"UPDATE applications SET status = ?, admin_note = ?, review_opinion = ?, processed_by = ?, updated_at = ? WHERE id = ?",
-		req.Status, req.Data.Note, req.Data.Opinion, adminID, time.Now().Unix(), req.AppID,
+		req.Status, req.Data.Note, req.Data.Opinion, adminIDForUpdate, time.Now().Unix(), req.AppID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新失败"})
@@ -189,6 +355,9 @@ func ReviewApplication(c *gin.Context) {
 		return
 	}
 
+	// 审核完成后解锁
+	lockManager.UnlockApplication(req.AppID, currentAdminID)
+
 	// 异步发送邮件，避免阻塞审核响应
 	go func(status, targetEmail, code, opinion string) {
 		emailService, emailErr := services.GetEmailService()
@@ -200,6 +369,21 @@ func ReviewApplication(c *gin.Context) {
 			}
 		}
 	}(req.Status, email, req.Data.Code, req.Data.Opinion)
+
+	// 发送站内信通知（如果用户已注册）
+	if userID.Valid {
+		go func(uid int, status, opinion string) {
+			if status == "approved" {
+				_ = SendMessageToUser(uid, "🎉 您的邀请码申请已通过", "恭喜！您的邀请码申请已通过审核，邀请码已发送至您的邮箱，请查收。")
+			} else {
+				rejectMsg := "很抱歉，您的邀请码申请未通过审核。"
+				if opinion != "" {
+					rejectMsg += "\n\n审核意见：" + opinion
+				}
+				_ = SendMessageToUser(uid, "关于您的邀请码申请", rejectMsg)
+			}
+		}(int(userID.Int64), req.Status, req.Data.Opinion)
+	}
 
 	// 记录审计日志
 	adminUsername, _ := c.Get("admin_username")
@@ -627,9 +811,10 @@ func GetAdmins(c *gin.Context) {
 // AddAdmin 添加管理员
 func AddAdmin(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-		Role     string `json:"role" binding:"required"`
+		Username    string `json:"username" binding:"required"`
+		Password    string `json:"password" binding:"required"`
+		Role        string `json:"role" binding:"required"`
+		Permissions string `json:"permissions"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -649,14 +834,25 @@ func AddAdmin(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "系统已关闭新增审核员功能"})
 			return
 		}
+
+		// 如果没有指定权限，使用默认审核员权限
+		if req.Permissions == "" {
+			req.Permissions = settings["default_reviewer_permissions"]
+			if req.Permissions == "" {
+				req.Permissions = "applications,tickets,messages"
+			}
+		}
+	} else if req.Role == "super" {
+		// 超级管理员拥有所有权限
+		req.Permissions = "all"
 	}
 
 	passwordHash := utils.HashPassword(req.Password)
 	now := time.Now().Unix()
 
 	_, err := database.DB.Exec(
-		"INSERT INTO admins (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		req.Username, passwordHash, req.Role, now, now,
+		"INSERT INTO admins (username, password_hash, role, permissions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+		req.Username, passwordHash, req.Role, req.Permissions, now, now,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "用户名已存在或添加失败"})
@@ -762,6 +958,89 @@ func UpdateAdmin(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员信息已更新"})
+}
+
+// BatchUpdateAdminPermissions 批量更新管理员权限
+func BatchUpdateAdminPermissions(c *gin.Context) {
+	var req struct {
+		AdminIDs    []int  `json:"adminIds" binding:"required"`
+		Permissions string `json:"permissions" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if len(req.AdminIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请选择至少一个管理员"})
+		return
+	}
+
+	// 获取当前管理员ID，防止修改自己的权限
+	currentAdminID, _ := c.Get("admin_id")
+
+	// 开始事务
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Unix()
+	successCount := 0
+	skippedCount := 0
+
+	for _, adminID := range req.AdminIDs {
+		// 不能修改自己的权限
+		if adminID == currentAdminID.(int) {
+			skippedCount++
+			continue
+		}
+
+		// 检查是否是超级管理员（超级管理员权限不能通过批量修改）
+		var role string
+		err := tx.QueryRow("SELECT role FROM admins WHERE id = ?", adminID).Scan(&role)
+		if err != nil {
+			skippedCount++
+			continue
+		}
+
+		if role == "super" {
+			skippedCount++
+			continue
+		}
+
+		// 更新权限
+		_, err = tx.Exec(
+			"UPDATE admins SET permissions = ?, updated_at = ? WHERE id = ?",
+			req.Permissions, now, adminID,
+		)
+		if err != nil {
+			skippedCount++
+			continue
+		}
+
+		successCount++
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	message := fmt.Sprintf("成功更新 %d 个管理员权限", successCount)
+	if skippedCount > 0 {
+		message += fmt.Sprintf("，跳过 %d 个（超级管理员或自己）", skippedCount)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"message":      message,
+		"successCount": successCount,
+		"skippedCount": skippedCount,
+	})
 }
 
 // ==================== 用户管理 ====================

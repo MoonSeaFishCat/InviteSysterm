@@ -29,6 +29,9 @@ export default function Watermark({ text, username, email, role }: WatermarkProp
   useEffect(() => {
     if (!watermarkText) return;
 
+    // 检测当前主题
+    const isDark = document.documentElement.classList.contains('dark');
+
     // 创建水印容器
     const watermarkDiv = document.createElement('div');
     watermarkDiv.id = 'global-watermark';
@@ -52,12 +55,12 @@ export default function Watermark({ text, username, email, role }: WatermarkProp
     canvas.width = 400;
     canvas.height = 200;
 
-    // 设置文字样式
+    // 设置文字样式 - 根据主题选择颜色
     ctx.font = '14px Arial';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
+
     // 旋转并绘制文字
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate(-20 * Math.PI / 180);
@@ -96,9 +99,30 @@ export default function Watermark({ text, username, email, role }: WatermarkProp
       subtree: true,
     });
 
+    // 监听主题变化
+    const themeObserver = new MutationObserver(() => {
+      const currentIsDark = document.documentElement.classList.contains('dark');
+      if (currentIsDark !== isDark) {
+        // 主题变化，重新创建水印
+        const existingWatermark = document.getElementById('global-watermark');
+        if (existingWatermark) {
+          existingWatermark.remove();
+        }
+        // 触发重新渲染
+        setWatermarkText(prev => prev + ' ');
+        setTimeout(() => setWatermarkText(prev => prev.trim()), 0);
+      }
+    });
+
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
     // 清理函数
     return () => {
       observer.disconnect();
+      themeObserver.disconnect();
       const existingWatermark = document.getElementById('global-watermark');
       if (existingWatermark) {
         existingWatermark.remove();

@@ -17,9 +17,10 @@ import {
   Select,
   SelectItem,
   Chip,
-  Tooltip
+  Tooltip,
+  Checkbox
 } from "@heroui/react";
-import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock, FaCheckSquare } from 'react-icons/fa';
 import { SiLinux } from 'react-icons/si';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
@@ -47,14 +48,17 @@ export default function Admins() {
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loading, setLoading] = useState(true);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen: isBatchOpen, onOpen: onBatchOpen, onOpenChange: onBatchOpenChange } = useDisclosure();
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedAdmin, setSelectedAdmin] = useState<Admin | null>(null);
+  const [selectedAdminIds, setSelectedAdminIds] = useState<Set<number>>(new Set());
 
   // Form states
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'super' | 'reviewer'>('reviewer');
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
+  const [batchPermissions, setBatchPermissions] = useState<Set<string>>(new Set());
 
   const fetchAdmins = async () => {
     setLoading(true);
@@ -148,6 +152,55 @@ export default function Admins() {
     }
   };
 
+  const handleBatchPermissionsOpen = () => {
+    if (selectedAdminIds.size === 0) {
+      toast.error("请先选择要设置权限的管理员");
+      return;
+    }
+    setBatchPermissions(new Set());
+    onBatchOpen();
+  };
+
+  const handleBatchPermissionsSubmit = async () => {
+    if (batchPermissions.size === 0) {
+      toast.error("请至少选择一个权限");
+      return;
+    }
+
+    try {
+      const permissionsStr = Array.from(batchPermissions).join(',');
+      const res = await api.post('/admin/admins/batch-update-permissions', {
+        adminIds: Array.from(selectedAdminIds),
+        permissions: permissionsStr
+      });
+
+      toast.success(res.data.message || "批量设置权限成功");
+      setSelectedAdminIds(new Set());
+      onBatchOpenChange();
+      fetchAdmins();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "批量设置权限失败");
+    }
+  };
+
+  const toggleSelectAdmin = (id: number) => {
+    const newSet = new Set(selectedAdminIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedAdminIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedAdminIds.size === admins.filter(a => a.role !== 'super').length) {
+      setSelectedAdminIds(new Set());
+    } else {
+      setSelectedAdminIds(new Set(admins.filter(a => a.role !== 'super').map(a => a.id)));
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return isNaN(date.getTime()) ? '未知' : date.toLocaleString();
@@ -160,19 +213,39 @@ export default function Admins() {
           <FaUserShield className="text-primary" />
           管理员管理
         </h2>
-        <Button 
-          color="primary" 
-          startContent={<FaPlus />} 
-          onPress={handleAddOpen}
-          radius="lg"
-          className="font-bold shadow-md"
-        >
-          新增管理员
-        </Button>
+        <div className="flex gap-2">
+          {selectedAdminIds.size > 0 && (
+            <Button
+              color="secondary"
+              startContent={<FaCheckSquare />}
+              onPress={handleBatchPermissionsOpen}
+              radius="lg"
+              className="font-bold shadow-md"
+            >
+              批量设置权限 ({selectedAdminIds.size})
+            </Button>
+          )}
+          <Button
+            color="primary"
+            startContent={<FaPlus />}
+            onPress={handleAddOpen}
+            radius="lg"
+            className="font-bold shadow-md"
+          >
+            新增管理员
+          </Button>
+        </div>
       </div>
 
       <Table aria-label="Admins table" className="shadow-sm border border-divider rounded-xl">
         <TableHeader>
+          <TableColumn>
+            <Checkbox
+              isSelected={selectedAdminIds.size === admins.filter(a => a.role !== 'super').length && admins.filter(a => a.role !== 'super').length > 0}
+              onValueChange={toggleSelectAll}
+              size="sm"
+            />
+          </TableColumn>
           <TableColumn>用户名</TableColumn>
           <TableColumn>角色</TableColumn>
           <TableColumn>权限</TableColumn>
@@ -180,18 +253,29 @@ export default function Admins() {
           <TableColumn>创建时间</TableColumn>
           <TableColumn align="center">操作</TableColumn>
         </TableHeader>
-        <TableBody 
-          loadingContent={"加载中..."} 
+        <TableBody
+          loadingContent={"加载中..."}
           isLoading={loading}
           emptyContent={"暂无管理员"}
         >
           {admins.map((admin) => (
             <TableRow key={admin.id}>
+              <TableCell>
+                {admin.role !== 'super' ? (
+                  <Checkbox
+                    isSelected={selectedAdminIds.has(admin.id)}
+                    onValueChange={() => toggleSelectAdmin(admin.id)}
+                    size="sm"
+                  />
+                ) : (
+                  <span className="text-default-300 text-xs">-</span>
+                )}
+              </TableCell>
               <TableCell className="font-medium">{admin.username}</TableCell>
               <TableCell>
-                <Chip 
+                <Chip
                   color={admin.role === 'super' ? "danger" : "primary"}
-                  variant="flat" 
+                  variant="flat"
                   size="sm"
                   className="font-bold"
                 >
@@ -318,6 +402,51 @@ export default function Admins() {
                   取消
                 </Button>
                 <Button color="primary" onPress={handleSubmit} radius="lg" className="font-bold shadow-md">
+                  确定
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* 批量设置权限模态框 */}
+      <Modal isOpen={isBatchOpen} onOpenChange={onBatchOpenChange} backdrop="blur">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex gap-2 items-center">
+                <FaCheckSquare />
+                批量设置权限
+              </ModalHeader>
+              <ModalBody className="gap-4">
+                <p className="text-sm text-default-500">
+                  已选择 <span className="font-bold text-primary">{selectedAdminIds.size}</span> 个审核员
+                </p>
+                <Select
+                  label="权限设置"
+                  placeholder="为审核员分配权限"
+                  selectionMode="multiple"
+                  selectedKeys={batchPermissions}
+                  onSelectionChange={(keys) => setBatchPermissions(new Set(Array.from(keys) as string[]))}
+                  variant="bordered"
+                  radius="lg"
+                >
+                  {PERMISSIONS.map((p) => (
+                    <SelectItem key={p.key} textValue={p.label}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <p className="text-xs text-warning">
+                  ⚠️ 注意：此操作将覆盖所选审核员的现有权限设置
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose} radius="lg">
+                  取消
+                </Button>
+                <Button color="primary" onPress={handleBatchPermissionsSubmit} radius="lg" className="font-bold shadow-md">
                   确定
                 </Button>
               </ModalFooter>

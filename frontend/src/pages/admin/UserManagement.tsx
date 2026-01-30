@@ -18,10 +18,14 @@ import {
   Select,
   SelectItem,
   Pagination,
+  Card,
+  CardBody,
+  Divider,
+  Avatar,
 } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
-import { FaSearch, FaBan, FaCheck, FaTrash, FaKey, FaEye } from 'react-icons/fa';
+import { FaSearch, FaBan, FaCheck, FaTrash, FaKey, FaEye, FaUser, FaEnvelope, FaClock, FaShieldAlt, FaTicketAlt, FaFileAlt, FaComments } from 'react-icons/fa';
 
 interface User {
   id: number;
@@ -299,40 +303,225 @@ export default function UserManagement() {
       </Modal>
 
       {/* 详情模态框 */}
-      <Modal isOpen={isDetailOpen} onClose={onDetailClose} size="2xl">
+      <Modal isOpen={isDetailOpen} onClose={onDetailClose} size="3xl" scrollBehavior="inside">
         <ModalContent>
-          <ModalHeader>用户详情</ModalHeader>
+          <ModalHeader className="flex flex-col gap-1">
+            <div className="flex items-center gap-3">
+              <Avatar
+                icon={<FaUser />}
+                classNames={{
+                  base: "bg-gradient-to-br from-indigo-500 to-pink-500",
+                  icon: "text-white",
+                }}
+                size="lg"
+              />
+              <div>
+                <h2 className="text-xl font-bold">用户详情</h2>
+                <p className="text-sm text-gray-500">{userDetail?.user?.email}</p>
+              </div>
+            </div>
+          </ModalHeader>
           <ModalBody>
             {userDetail && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-bold mb-2">基本信息</h3>
-                  <p>ID: {userDetail.user.id}</p>
-                  <p>邮箱: {userDetail.user.email}</p>
-                  <p>昵称: {userDetail.user.nickname}</p>
-                  <p>状态: {userDetail.user.status === 'active' ? '正常' : '封禁'}</p>
-                  <p>注册时间: {formatDate(userDetail.user.created_at)}</p>
-                </div>
-                
-                {userDetail.applications && userDetail.applications.length > 0 && (
-                  <div>
-                    <h3 className="font-bold mb-2">申请记录</h3>
-                    <div className="space-y-2">
-                      {userDetail.applications.map((app: any) => (
-                        <div key={app.id} className="p-3 border rounded">
-                          <p>状态: {app.status}</p>
-                          <p>时间: {formatDate(app.created_at)}</p>
-                          <p>IP: {app.ip}</p>
-                        </div>
-                      ))}
+              <div className="space-y-6">
+                {/* 基本信息卡片 */}
+                <Card>
+                  <CardBody>
+                    <div className="flex items-center gap-2 mb-4">
+                      <FaUser className="text-primary" />
+                      <h3 className="text-lg font-bold">基本信息</h3>
                     </div>
-                  </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">用户 ID</p>
+                          <p className="font-semibold">#{userDetail.user.id}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                            <FaEnvelope className="text-xs" /> 邮箱地址
+                          </p>
+                          <p className="font-semibold break-all">{userDetail.user.email}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">昵称</p>
+                          <p className="font-semibold">{userDetail.user.nickname || '未设置'}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                            <FaShieldAlt className="text-xs" /> 账号状态
+                          </p>
+                          <Chip
+                            color={userDetail.user.status === 'active' ? 'success' : 'danger'}
+                            variant="flat"
+                            size="sm"
+                          >
+                            {userDetail.user.status === 'active' ? '✓ 正常' : '✗ 封禁'}
+                          </Chip>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                            <FaClock className="text-xs" /> 注册时间
+                          </p>
+                          <p className="font-semibold text-sm">{formatDate(userDetail.user.created_at)}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                            <FaClock className="text-xs" /> 最后更新
+                          </p>
+                          <p className="font-semibold text-sm">{formatDate(userDetail.user.updated_at)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+
+                {/* 申请记录 */}
+                {userDetail.applications && userDetail.applications.length > 0 && (
+                  <Card>
+                    <CardBody>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FaFileAlt className="text-warning" />
+                        <h3 className="text-lg font-bold">申请记录</h3>
+                        <Chip size="sm" variant="flat">{userDetail.applications.length}</Chip>
+                      </div>
+                      <div className="space-y-3">
+                        {userDetail.applications.map((app: any, index: number) => (
+                          <div key={app.id}>
+                            {index > 0 && <Divider className="my-3" />}
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Chip
+                                    size="sm"
+                                    color={
+                                      app.status === 'approved' ? 'success' :
+                                      app.status === 'rejected' ? 'danger' :
+                                      'warning'
+                                    }
+                                    variant="flat"
+                                  >
+                                    {app.status === 'approved' ? '✓ 已通过' :
+                                     app.status === 'rejected' ? '✗ 已拒绝' :
+                                     '⏳ 待审核'}
+                                  </Chip>
+                                  <span className="text-xs text-gray-500">申请 ID: #{app.id}</span>
+                                </div>
+                                <div className="space-y-1 text-sm">
+                                  <p className="text-gray-600">
+                                    <span className="font-semibold">申请理由：</span>
+                                    {app.reason || '无'}
+                                  </p>
+                                  {app.admin_note && (
+                                    <p className="text-gray-600">
+                                      <span className="font-semibold">管理员备注：</span>
+                                      {app.admin_note}
+                                    </p>
+                                  )}
+                                  {app.review_opinion && (
+                                    <p className="text-gray-600">
+                                      <span className="font-semibold">审核意见：</span>
+                                      {app.review_opinion}
+                                    </p>
+                                  )}
+                                  <div className="flex gap-4 text-xs text-gray-500 mt-2">
+                                    <span>📅 {formatDate(app.created_at)}</span>
+                                    <span>🌐 IP: {app.ip}</span>
+                                    {app.device_id && <span>🖥️ 设备: {app.device_id.substring(0, 8)}...</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardBody>
+                  </Card>
+                )}
+
+                {/* 工单记录 */}
+                {userDetail.tickets && userDetail.tickets.length > 0 && (
+                  <Card>
+                    <CardBody>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FaTicketAlt className="text-secondary" />
+                        <h3 className="text-lg font-bold">工单记录</h3>
+                        <Chip size="sm" variant="flat">{userDetail.tickets.length}</Chip>
+                      </div>
+                      <div className="space-y-3">
+                        {userDetail.tickets.map((ticket: any, index: number) => (
+                          <div key={ticket.id}>
+                            {index > 0 && <Divider className="my-3" />}
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Chip
+                                    size="sm"
+                                    color={
+                                      ticket.status === 'closed' ? 'default' :
+                                      ticket.status === 'replied' ? 'success' :
+                                      'warning'
+                                    }
+                                    variant="flat"
+                                  >
+                                    {ticket.status === 'closed' ? '已关闭' :
+                                     ticket.status === 'replied' ? '已回复' :
+                                     '待处理'}
+                                  </Chip>
+                                  <span className="text-xs text-gray-500">工单 ID: #{ticket.id}</span>
+                                </div>
+                                <p className="font-semibold mb-1">{ticket.subject}</p>
+                                <p className="text-sm text-gray-600 line-clamp-2">{ticket.content}</p>
+                                <p className="text-xs text-gray-500 mt-2">📅 {formatDate(ticket.created_at)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardBody>
+                  </Card>
+                )}
+
+                {/* 站内信统计 */}
+                {userDetail.messages_count !== undefined && (
+                  <Card>
+                    <CardBody>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FaComments className="text-primary" />
+                        <h3 className="text-lg font-bold">站内信统计</h3>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
+                          <p className="text-3xl font-bold text-primary">{userDetail.messages_count || 0}</p>
+                          <p className="text-sm text-gray-600 mt-1">总消息数</p>
+                        </div>
+                        <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                          <p className="text-3xl font-bold text-success">{userDetail.unread_messages_count || 0}</p>
+                          <p className="text-sm text-gray-600 mt-1">未读消息</p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                )}
+
+                {/* 空状态提示 */}
+                {(!userDetail.applications || userDetail.applications.length === 0) &&
+                 (!userDetail.tickets || userDetail.tickets.length === 0) && (
+                  <Card>
+                    <CardBody>
+                      <div className="text-center py-8 text-gray-500">
+                        <p>该用户暂无申请记录和工单记录</p>
+                      </div>
+                    </CardBody>
+                  </Card>
                 )}
               </div>
             )}
           </ModalBody>
           <ModalFooter>
-            <Button onPress={onDetailClose}>
+            <Button color="primary" variant="light" onPress={onDetailClose}>
               关闭
             </Button>
           </ModalFooter>

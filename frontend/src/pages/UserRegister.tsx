@@ -69,7 +69,7 @@ export default function UserRegister() {
       const nonce = Math.floor(Math.random() * 1000000);
       const fingerprint = getDeviceId();
       const payload = captchaResult ? { email, ...(captchaResult as object) } : { email };
-      const encrypted = StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
 
       const res = await api.post('/register-code', {
         encrypted,
@@ -114,7 +114,7 @@ export default function UserRegister() {
         nickname: nickname || email.split('@')[0],
         ...(captchaResult ? (captchaResult as object) : {})
       };
-      const encrypted = StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
 
       const res = await api.post('/user/register', { 
         encrypted,

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { 
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, 
-  Chip, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, 
+import {
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Chip, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   useDisclosure, Textarea, Input, Spinner, Select, SelectItem, Pagination,
-  Tooltip
+  Tooltip, Card, CardBody, Badge, Progress
 } from "@heroui/react";
-import { FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope, FaCalendarAlt, FaGlobe, FaFingerprint, FaTrash } from 'react-icons/fa';
+import {
+  FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope,
+  FaCalendarAlt, FaGlobe, FaFingerprint, FaTrash, FaHistory, FaClock,
+  FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaUserShield, FaFilter
+} from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 import { storage } from '../../utils/storage';
@@ -23,6 +27,11 @@ interface Application {
   adminUsername?: string;
 }
 
+interface ApplicationDetail {
+  application: Application;
+  history: Application[];
+}
+
 export default function Applications() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +47,9 @@ export default function Applications() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKeys, setSelectedKeys] = useState<any>(new Set());
-  
+  const [applicationDetail, setApplicationDetail] = useState<ApplicationDetail | null>(null);
+  const [lockRefreshInterval, setLockRefreshInterval] = useState<number | null>(null);
+
   const {isOpen, onOpen, onClose} = useDisclosure();
   const deleteModal = useDisclosure();
   const batchReviewModal = useDisclosure();
@@ -80,13 +91,65 @@ export default function Applications() {
     return () => clearTimeout(timer);
   }, [statusFilter, searchQuery, page, pageSize]);
 
-  const handleOpenDetail = (app: Application) => {
+  const handleOpenDetail = async (app: Application) => {
     setSelectedApp(app);
     setReviewStatus('approved');
     setInviteCode('');
     setAdminNote(app.adminNote || '');
     setReviewOpinion(app.reviewOpinion || '');
+
+    // 获取详细信息和历史记录
+    try {
+      const res = await api.get(`/admin/applications/${app.id}`);
+      if (res.data.success) {
+        setApplicationDetail(res.data);
+
+        // 启动锁定刷新定时器（每2分钟刷新一次）
+        const interval = window.setInterval(async () => {
+          try {
+            await api.post(`/admin/applications/${app.id}/refresh-lock`);
+          } catch (error: any) {
+            if (error.response?.status === 423) {
+              // 锁定被其他人占用
+              toast.error(error.response?.data?.message || '该申请已被其他审核员占用');
+              handleCloseDetail();
+            }
+          }
+        }, 2 * 60 * 1000); // 2分钟
+
+        setLockRefreshInterval(interval);
+      } else if (res.data.locked) {
+        // 申请被锁定
+        toast.error(res.data.message || '该申请正在被其他审核员审核中');
+        return;
+      }
+    } catch (error: any) {
+      if (error.response?.status === 423) {
+        toast.error(error.response?.data?.message || '该申请正在被其他审核员审核中');
+        return;
+      }
+      console.error('Failed to fetch application detail:', error);
+    }
+
     onOpen();
+  };
+
+  const handleCloseDetail = () => {
+    // 清除锁定刷新定时器
+    if (lockRefreshInterval) {
+      clearInterval(lockRefreshInterval);
+      setLockRefreshInterval(null);
+    }
+
+    // 解锁申请
+    if (selectedApp) {
+      api.post(`/admin/applications/${selectedApp.id}/unlock`).catch(err => {
+        console.error('Failed to unlock application:', err);
+      });
+    }
+
+    setApplicationDetail(null);
+    onClose();
   };
 
   const submitReview = async () => {
@@ -108,10 +171,15 @@ export default function Applications() {
         }
       });
       toast.success("审核提交成功");
-      onClose();
+      handleCloseDetail();
       fetchApps();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "审核失败");
+      if (error.response?.status === 423) {
+        toast.error(error.response?.data?.message || "该申请已被其他审核员占用");
+        handleCloseDetail();
+      } else {
+        toast.error(error.response?.data?.message || "审核失败");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -289,54 +357,174 @@ export default function Applications() {
     }
   };
 
+  // 统计数据
+  const stats = {
+    total: apps.length,
+    pending: apps.filter(a => a.status === 'pending').length,
+    approved: apps.filter(a => a.status === 'approved').length,
+    rejected: apps.filter(a => a.status === 'rejected').length,
+  };
+
   return (
-    <div className="flex flex-col gap-6 w-full">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-content1 p-6 rounded-large shadow-sm border border-divider">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-bold tracking-tight">申请管理</h1>
-          <p className="text-sm text-default-500">查看并审核新成员的加入申请</p>
+    <div className="flex flex-col gap-6 w-full p-6">
+      {/* 页面标题 */}
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
+          <FaEnvelope className="text-2xl text-white" />
         </div>
-        
-        <div className="flex flex-wrap gap-3 w-full md:w-auto items-center">
-          <div className="flex gap-2 mr-2">
-            <Button 
-              size="sm" 
-              color="primary" 
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+            申请管理
+          </h1>
+          <p className="text-sm text-default-500 mt-1">管理和审核用户的邀请码申请</p>
+        </div>
+      </div>
+
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="border-none bg-gradient-to-br from-blue-500/10 to-cyan-500/10 shadow-md hover:shadow-lg transition-shadow">
+          <CardBody className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-default-500 uppercase">总申请</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">{stats.total}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <FaEnvelope className="text-2xl text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="border-none bg-gradient-to-br from-yellow-500/10 to-orange-500/10 shadow-md hover:shadow-lg transition-shadow">
+          <CardBody className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-default-500 uppercase">待审核</p>
+                <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400 mt-1">{stats.pending}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                <FaHourglassHalf className="text-2xl text-yellow-600 dark:text-yellow-400" />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="border-none bg-gradient-to-br from-green-500/10 to-emerald-500/10 shadow-md hover:shadow-lg transition-shadow">
+          <CardBody className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-default-500 uppercase">已通过</p>
+                <p className="text-3xl font-bold text-green-600 dark:text-green-400 mt-1">{stats.approved}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                <FaCheckCircle className="text-2xl text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="border-none bg-gradient-to-br from-red-500/10 to-pink-500/10 shadow-md hover:shadow-lg transition-shadow">
+          <CardBody className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-default-500 uppercase">已拒绝</p>
+                <p className="text-3xl font-bold text-red-600 dark:text-red-400 mt-1">{stats.rejected}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                <FaTimesCircle className="text-2xl text-red-600 dark:text-red-400" />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* 处理进度 */}
+      {stats.total > 0 && (
+        <Card className="border-none bg-gradient-to-r from-primary/5 to-secondary/5 shadow-md">
+          <CardBody className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-bold text-default-600">申请处理进度</p>
+              <p className="text-xs text-default-500">
+                已处理: {stats.approved + stats.rejected} / {stats.total}
+                ({((stats.approved + stats.rejected) / stats.total * 100).toFixed(1)}%)
+              </p>
+            </div>
+            <Progress
+              value={(stats.approved + stats.rejected) / stats.total * 100}
+              color="primary"
+              size="sm"
+              className="mb-2"
+            />
+            <div className="flex gap-4 text-xs">
+              <span className="text-green-600 dark:text-green-400 font-bold">
+                ✓ 通过率: {stats.total > 0 ? ((stats.approved / stats.total) * 100).toFixed(1) : 0}%
+              </span>
+              <span className="text-red-600 dark:text-red-400 font-bold">
+                ✗ 拒绝率: {stats.total > 0 ? ((stats.rejected / stats.total) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* 操作栏 */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-content1 p-4 rounded-large shadow-sm border border-divider">
+        <div className="flex gap-2">
+          <Badge
+            content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
+            color="primary"
+            isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+          >
+            <Button
+              size="sm"
+              color="primary"
               variant="flat"
-              isDisabled={selectedKeys === "all" || selectedKeys.size === 0}
+              isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
               onPress={() => {
                 setReviewOpinion('');
                 setAdminNote('');
                 batchReviewModal.onOpen();
               }}
-              className="h-12 px-4 rounded-large font-bold"
+              className="h-10 px-4 rounded-lg font-bold"
+              startContent={<FaUserShield />}
             >
               批量审核
             </Button>
-            <Button 
-              size="sm" 
-              color="danger" 
+          </Badge>
+          <Badge
+            content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
+            color="danger"
+            isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+          >
+            <Button
+              size="sm"
+              color="danger"
               variant="flat"
-              isDisabled={selectedKeys === "all" || selectedKeys.size === 0}
+              isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
               onPress={batchDeleteModal.onOpen}
-              className="h-12 px-4 rounded-large font-bold"
+              className="h-10 px-4 rounded-lg font-bold"
+              startContent={<FaTrash />}
             >
               批量删除
             </Button>
-          </div>
+          </Badge>
+        </div>
+
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <Input
             isClearable
             aria-label="搜索申请"
             className="w-full sm:max-w-[280px]"
             placeholder="搜索邮箱或理由..."
-            startContent={<FaSearch className="text-default-300" />}
+            startContent={<FaSearch className="text-default-400" />}
             value={searchQuery}
             onValueChange={setSearchQuery}
-            variant="flat"
-            size="md"
+            variant="bordered"
+            size="sm"
             radius="lg"
             classNames={{
-              inputWrapper: "bg-default-100/50 dark:bg-default-800/50 border-none h-12"
+              inputWrapper: "border-2 h-10"
             }}
             onClear={() => setSearchQuery('')}
           />
@@ -346,11 +534,12 @@ export default function Applications() {
             placeholder="状态筛选"
             selectedKeys={[statusFilter]}
             onSelectionChange={(keys) => setStatusFilter(Array.from(keys)[0] as string)}
-            variant="flat"
-            size="md"
+            variant="bordered"
+            size="sm"
             radius="lg"
+            startContent={<FaFilter className="text-default-400" />}
             classNames={{
-              trigger: "bg-default-100/50 dark:bg-default-800/50 border-none h-12"
+              trigger: "border-2 h-10"
             }}
           >
             <SelectItem key="all" textValue="全部状态">全部状态</SelectItem>
@@ -358,12 +547,13 @@ export default function Applications() {
             <SelectItem key="approved" textValue="已批准">已批准</SelectItem>
             <SelectItem key="rejected" textValue="已拒绝">已拒绝</SelectItem>
           </Select>
-          <Button 
-            isIconOnly 
-            variant="flat" 
+          <Button
+            isIconOnly
+            variant="flat"
             color="primary"
-            onPress={fetchApps} 
-            className="h-12 w-12 min-w-12 rounded-large transition-transform active:scale-95"
+            onPress={fetchApps}
+            size="sm"
+            className="h-10 w-10 min-w-10 rounded-lg transition-transform active:scale-95"
           >
             <FaSync className={loading ? "animate-spin" : ""} />
           </Button>
@@ -470,12 +660,12 @@ export default function Applications() {
                 </div>
                 <p className="font-semibold text-default-700">{selectedApp?.ip}</p>
               </div>
-              <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
+              <div className="space-y-2 p-3 rounded-xl bg-default-50 dark:bg-default-100 border border-divider/50">
                 <div className="flex items-center gap-2 text-default-400">
                   <FaFingerprint className="text-xs" />
                   <p className="text-xs font-bold uppercase">设备指纹</p>
                 </div>
-                <p className="font-mono text-[10px] text-default-500 break-all bg-default-100 p-1.5 rounded-lg border border-divider/30">
+                <p className="font-mono text-[10px] text-default-700 dark:text-default-600 break-all bg-default-100 dark:bg-default-200 p-1.5 rounded-lg border border-divider/30">
                   {selectedApp?.deviceId}
                 </p>
               </div>
@@ -490,6 +680,75 @@ export default function Applications() {
                 </p>
               </div>
             </div>
+
+            {/* 历史申请记录 */}
+            {applicationDetail && applicationDetail.history && applicationDetail.history.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-divider">
+                <div className="flex items-center gap-2">
+                  <FaHistory className="text-warning" />
+                  <p className="text-sm font-bold text-default-600">历史申请记录</p>
+                  <Chip size="sm" variant="flat" color="warning">
+                    {applicationDetail.history.length} 条
+                  </Chip>
+                </div>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {applicationDetail.history.map((histApp) => (
+                    <Card key={histApp.id} className="border border-divider">
+                      <CardBody className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Chip
+                              size="sm"
+                              color={
+                                histApp.status === 'approved' ? 'success' :
+                                histApp.status === 'rejected' ? 'danger' :
+                                'warning'
+                              }
+                              variant="flat"
+                            >
+                              {histApp.status === 'approved' ? '✓ 已通过' :
+                               histApp.status === 'rejected' ? '✗ 已拒绝' :
+                               '⏳ 待审核'}
+                            </Chip>
+                            <span className="text-xs text-default-400">申请 ID: #{histApp.id}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-default-400">
+                            <FaClock />
+                            <span>{formatDate(histApp.createdAt)}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="p-3 bg-default-50 rounded-lg">
+                            <p className="text-xs font-bold text-default-500 mb-1">申请理由：</p>
+                            <p className="text-sm text-default-700 line-clamp-2">{histApp.reason}</p>
+                          </div>
+
+                          {histApp.reviewOpinion && (
+                            <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
+                              <p className="text-xs font-bold text-primary mb-1">审核意见：</p>
+                              <p className="text-sm text-default-700">{histApp.reviewOpinion}</p>
+                            </div>
+                          )}
+
+                          {histApp.adminNote && (
+                            <div className="p-3 bg-warning/5 rounded-lg border border-warning/20">
+                              <p className="text-xs font-bold text-warning mb-1">内部备注：</p>
+                              <p className="text-sm text-default-700">{histApp.adminNote}</p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-3 text-xs text-default-400 pt-1">
+                            <span>🌐 IP: {histApp.ip}</span>
+                            {histApp.adminUsername && <span>👤 审核员: {histApp.adminUsername}</span>}
+                          </div>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 审核区域 */}
             <div className="space-y-4 pt-4 border-t border-divider">
@@ -602,18 +861,18 @@ export default function Applications() {
             </div>
           </ModalBody>
           <ModalFooter>
-            <Button 
-              variant="light" 
+            <Button
+              variant="light"
               color="primary"
-              onPress={onClose}
+              onPress={handleCloseDetail}
               radius="lg"
               className="font-bold h-12 px-6"
             >
               关闭
             </Button>
             {selectedApp?.status === 'pending' && (
-              <Button 
-                color={reviewStatus === 'approved' ? 'primary' : 'danger'} 
+              <Button
+                color={reviewStatus === 'approved' ? 'primary' : 'danger'}
                 onPress={submitReview}
                 isLoading={submitting}
                 radius="lg"

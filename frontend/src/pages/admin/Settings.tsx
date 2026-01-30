@@ -465,6 +465,18 @@ export default function Settings() {
                 />
               </div>
             </div>
+            <div className="md:col-span-2 p-4 bg-default-50 rounded-large border border-divider">
+              <p className="text-sm font-bold mb-2">默认审核员权限</p>
+              <p className="text-tiny text-default-500 mb-3">自动创建的审核员将获得以下权限（多个权限用逗号分隔）</p>
+              <Input
+                placeholder="例如: applications,tickets,messages"
+                value={settings.default_reviewer_permissions || 'applications,tickets,messages'}
+                onValueChange={(val) => handleChange('default_reviewer_permissions', val)}
+                variant="bordered"
+                radius="lg"
+                description="可选权限: applications(申请管理), tickets(工单管理), messages(站内信管理), announcements(公告管理), settings(系统设置), admins(管理员管理)"
+              />
+            </div>
           </CardBody>
         </Card>
       </div>

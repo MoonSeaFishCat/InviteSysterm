@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Input, Button, Card, CardBody, CardHeader } from "@heroui/react";
+import { Input, Button, Card, CardBody } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -93,7 +93,7 @@ export default function Login() {
       const fingerprint = getDeviceId();
       const payload = { username, password };
       const finalPayload = captchaResult ? { ...payload, ...captchaResult } : payload;
-      const encrypted = StarMoonSecurity.encryptData(finalPayload, fingerprint, nonce);
+      const encrypted = await StarMoonSecurity.encryptData(finalPayload, fingerprint, nonce);
 
       const res = await api.post('/admin/login', {
         encrypted,
@@ -120,18 +120,22 @@ export default function Login() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-[80vh] w-full px-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-950 dark:to-indigo-950 px-4 py-12">
       <div className="w-full max-w-md">
-        <Card className="w-full shadow-xl border border-divider">
-          <CardHeader className="flex flex-col gap-4 items-center py-8">
-            <FaShieldAlt size={48} className="text-primary" />
-            <div className="text-center">
-              <h1 className="text-2xl font-bold tracking-tight">管理后台</h1>
-              <p className="text-sm text-default-500">Administrator Login</p>
-            </div>
-          </CardHeader>
-          
-          <CardBody className="px-8 pb-10">
+        {/* Logo 和标题 */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 shadow-2xl mb-4 animate-pulse">
+            <FaShieldAlt size={40} className="text-white" />
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
+            管理后台
+          </h1>
+          <p className="text-default-500 text-lg">Administrator Login Portal</p>
+        </div>
+
+        {/* 登录卡片 */}
+        <Card className="w-full shadow-2xl border-2 border-default-200 dark:border-default-100 backdrop-blur-sm bg-white/80 dark:bg-gray-900/80">
+          <CardBody className="px-8 py-10">
             <form onSubmit={handleLogin} className="flex flex-col gap-6">
               <Input
                 label="用户名"
@@ -143,10 +147,10 @@ export default function Login() {
                 size="lg"
                 autoComplete="username"
                 classNames={{
-                  label: "font-bold",
-                  inputWrapper: "h-14 px-4"
+                  label: "font-semibold text-base",
+                  inputWrapper: "h-14 px-4 border-2 hover:border-primary transition-colors"
                 }}
-                startContent={<FaUser className="text-default-400" />}
+                startContent={<FaUser className="text-default-400 text-lg" />}
               />
               <Input
                 label="密码"
@@ -159,31 +163,31 @@ export default function Login() {
                 size="lg"
                 autoComplete="current-password"
                 classNames={{
-                  label: "font-bold",
-                  inputWrapper: "h-14 px-4"
+                  label: "font-semibold text-base",
+                  inputWrapper: "h-14 px-4 border-2 hover:border-primary transition-colors"
                 }}
-                startContent={<FaLock className="text-default-400" />}
+                startContent={<FaLock className="text-default-400 text-lg" />}
               />
               <Button
                 type="submit"
                 color="primary"
-                className="w-full mt-4 h-14 text-lg font-bold shadow-sm"
+                className="w-full mt-2 h-14 text-lg font-bold shadow-lg hover:shadow-xl transition-all bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 isLoading={loading}
               >
-                登录
+                {loading ? '登录中...' : '立即登录'}
               </Button>
 
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-divider"></div>
-                <span className="flex-shrink mx-4 text-default-400 text-sm">或者</span>
-                <div className="flex-grow border-t border-divider"></div>
+              <div className="relative flex py-3 items-center">
+                <div className="flex-grow border-t-2 border-default-200"></div>
+                <span className="flex-shrink mx-4 text-default-400 text-sm font-medium">或者</span>
+                <div className="flex-grow border-t-2 border-default-200"></div>
               </div>
 
-              <Button 
+              <Button
                 onPress={handleLinuxDoLogin}
                 variant="bordered"
-                className="w-full h-14 text-lg font-bold border-2 hover:bg-default-100"
-                startContent={<SiLinux />}
+                className="w-full h-14 text-lg font-bold border-2 hover:bg-default-100 dark:hover:bg-default-50 transition-all"
+                startContent={<SiLinux className="text-xl" />}
                 endContent={<FaExternalLinkAlt size={14} className="text-default-400" />}
               >
                 使用 Linux DO 登录
@@ -191,6 +195,13 @@ export default function Login() {
             </form>
           </CardBody>
         </Card>
+
+        {/* 底部提示 */}
+        <div className="mt-8 text-center">
+          <p className="text-sm text-default-400">
+            🔒 安全提示：请妥善保管您的管理员凭据
+          </p>
+        </div>
       </div>
     </div>
   );
