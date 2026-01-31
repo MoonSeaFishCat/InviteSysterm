@@ -119,6 +119,7 @@ func main() {
 				userAuth.PUT("/password", handlers.ChangeUserPassword)
 				userAuth.GET("/applications", handlers.GetUserApplications)
 				userAuth.POST("/application/submit", handlers.SubmitApplication)
+				userAuth.DELETE("/applications/:id", handlers.WithdrawApplication)
 
 				// 工单相关
 				userAuth.GET("/tickets", handlers.GetUserTickets)
@@ -130,8 +131,20 @@ func main() {
 				userAuth.GET("/messages", handlers.GetUserMessages)
 				userAuth.POST("/messages/:id/read", handlers.ReadMessage)
 				userAuth.POST("/messages/read-all", handlers.ReadAllMessages)
+
+				// 问答论坛相关
+				userAuth.POST("/forum/posts", handlers.CreateForumPost)
+				userAuth.POST("/forum/posts/:id/reply", handlers.CreateForumReply)
+				userAuth.PUT("/forum/posts/:id", handlers.UpdateForumPost)
+				userAuth.DELETE("/forum/posts/:id", handlers.DeleteForumPost)
+				userAuth.GET("/forum/my-posts", handlers.GetMyForumPosts)
+				userAuth.GET("/forum/my-replies", handlers.GetMyForumReplies)
 			}
 		}
+
+		// 公开的问答论坛路由（无需认证）
+		api.GET("/forum/posts", handlers.GetForumPosts)
+		api.GET("/forum/posts/:id", handlers.GetForumPost)
 
 		// 公告相关
 		api.GET("/announcements", handlers.GetAnnouncements)
@@ -188,6 +201,13 @@ func main() {
 				// 管理员交流空间
 				authenticated.GET("/chat/messages", handlers.GetAdminChatMessages)
 				authenticated.POST("/chat/messages", handlers.SendAdminChatMessage)
+
+				// 问答论坛管理（管理员可以回复和置顶）
+				authenticated.POST("/forum/posts", handlers.CreateForumPost)
+				authenticated.POST("/forum/posts/:id/reply", handlers.CreateForumReply)
+				authenticated.PUT("/forum/posts/:id", handlers.UpdateForumPost)
+				authenticated.POST("/forum/posts/:id/pin", handlers.PinForumPost)
+				authenticated.DELETE("/forum/posts/:id", handlers.DeleteForumPost)
 
 				// 只有超级管理员能访问的
 				super := authenticated.Group("", middleware.RoleMiddleware("super"))

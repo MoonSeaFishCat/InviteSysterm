@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem, Button } from "@heroui/react";
-import { FaUser, FaUserShield, FaSignOutAlt, FaHeart, FaMoon, FaSun } from 'react-icons/fa';
+import { FaUser, FaUserShield, FaSignOutAlt, FaHeart, FaMoon, FaSun, FaComments } from 'react-icons/fa';
 import { useTheme } from '../hooks/useTheme';
 
 interface LayoutProps {
@@ -48,6 +48,18 @@ export default function Layout({ children }: LayoutProps) {
               aria-label="切换主题"
             >
               {theme === 'dark' ? <FaSun className="text-lg" /> : <FaMoon className="text-lg" />}
+            </Button>
+          </NavbarItem>
+
+          {/* 问答专区 */}
+          <NavbarItem>
+            <Button
+              size="sm"
+              variant="flat"
+              startContent={<FaComments />}
+              onPress={() => navigate('/forum')}
+            >
+              问答专区
             </Button>
           </NavbarItem>
 

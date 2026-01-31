@@ -292,6 +292,51 @@ func GetUserProfileStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": stats})
 }
 
+// WithdrawApplication 撤回申请
+func WithdrawApplication(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	appID := c.Param("id")
+
+	// 检查申请是否存在且属于当前用户
+	var app struct {
+		ID     int
+		Email  string
+		Status string
+		UserID int
+	}
+
+	err := database.DB.QueryRow(
+		"SELECT a.id, a.email, a.status, u.id as user_id FROM applications a LEFT JOIN users u ON a.email = u.email WHERE a.id = ?",
+		appID,
+	).Scan(&app.ID, &app.Email, &app.Status, &app.UserID)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
+		return
+	}
+
+	// 验证申请所有权
+	if app.UserID != userID.(int) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无权操作此申请"})
+		return
+	}
+
+	// 只能撤回待审核的申请
+	if app.Status != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "只能撤回待审核的申请"})
+		return
+	}
+
+	// 删除申请
+	_, err = database.DB.Exec("DELETE FROM applications WHERE id = ?", appID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "撤回失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "申请已撤回"})
+}
+
 // UpdateUserProfile 更新用户信息
 func UpdateUserProfile(c *gin.Context) {
 	userID, _ := c.Get("user_id")

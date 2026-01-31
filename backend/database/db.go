@@ -259,6 +259,32 @@ func createTables() error {
 	CREATE INDEX IF NOT EXISTS idx_admin_chat_created ON admin_chat_messages(created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_admin_chat_admin ON admin_chat_messages(admin_id);
 	CREATE INDEX IF NOT EXISTS idx_admin_chat_pinned ON admin_chat_messages(is_pinned DESC, created_at DESC);
+
+	CREATE TABLE IF NOT EXISTS forum_posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER REFERENCES users(id),
+		admin_id INTEGER REFERENCES admins(id),
+		title TEXT NOT NULL,
+		content TEXT NOT NULL,
+		is_pinned INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS forum_replies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		post_id INTEGER NOT NULL REFERENCES forum_posts(id),
+		parent_reply_id INTEGER REFERENCES forum_replies(id),
+		user_id INTEGER REFERENCES users(id),
+		admin_id INTEGER REFERENCES admins(id),
+		content TEXT NOT NULL,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_forum_posts_created ON forum_posts(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_forum_posts_pinned ON forum_posts(is_pinned DESC, created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_forum_replies_post ON forum_replies(post_id, created_at ASC);
+	CREATE INDEX IF NOT EXISTS idx_forum_replies_parent ON forum_replies(parent_reply_id, created_at ASC);
 	`
 
 	_, err := DB.Exec(schema)

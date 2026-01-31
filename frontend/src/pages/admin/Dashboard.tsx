@@ -9,17 +9,27 @@ import Overview from './Overview';
 import UserManagement from './UserManagement';
 import Blacklist from './Blacklist';
 import AdminChat from './AdminChat';
+import ForumManagement from './ForumManagement';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { storage } from '../../utils/storage';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
 import { FaChartBar, FaPaperPlane, FaTicketAlt, FaEnvelope, FaBullhorn, FaCog, FaUserShield, FaHistory, FaUsers, FaBan, FaChevronDown, FaSignOutAlt, FaMoon, FaSun, FaComments } from 'react-icons/fa';
 import Watermark from '../../components/Watermark';
 import { useTheme } from '../../hooks/useTheme';
+import { useEffect } from 'react';
 
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+
+  // Check if admin is logged in
+  useEffect(() => {
+    const adminToken = storage.get('admin_token');
+    if (!adminToken) {
+      navigate('/admin/login');
+    }
+  }, [navigate]);
 
   // Get user role from localStorage
   const user = storage.get('admin_user');
@@ -28,7 +38,7 @@ export default function Dashboard() {
 
   // Get active tab from URL query params
   const searchParams = new URLSearchParams(location.search);
-  const activeTab = (searchParams.get('tab') as 'overview' | 'applications' | 'settings' | 'announcements' | 'admins' | 'audit-logs' | 'tickets' | 'messages' | 'users' | 'blacklist' | 'chat') || 'overview';
+  const activeTab = (searchParams.get('tab') as 'overview' | 'applications' | 'settings' | 'announcements' | 'admins' | 'audit-logs' | 'tickets' | 'messages' | 'users' | 'blacklist' | 'chat' | 'forum') || 'overview';
 
   const handleLogout = () => {
     storage.remove('admin_token');
@@ -42,6 +52,7 @@ export default function Dashboard() {
     { key: 'tickets', label: '工单管理', icon: <FaTicketAlt />, show: true },
     { key: 'messages', label: '消息通知', icon: <FaEnvelope />, show: true },
     { key: 'chat', label: '交流空间', icon: <FaComments />, show: true },
+    { key: 'forum', label: '问答管理', icon: <FaComments />, show: role === 'super' },
     { key: 'users', label: '用户管理', icon: <FaUsers />, show: role === 'super' },
     { key: 'blacklist', label: '黑名单', icon: <FaBan />, show: role === 'super' },
     { key: 'announcements', label: '公告管理', icon: <FaBullhorn />, show: role === 'super' },
@@ -131,6 +142,7 @@ export default function Dashboard() {
           {activeTab === 'tickets' && <Tickets />}
           {activeTab === 'messages' && <Messages />}
           {activeTab === 'chat' && <AdminChat />}
+          {activeTab === 'forum' && role === 'super' && <ForumManagement />}
           {activeTab === 'announcements' && role === 'super' && <Announcements />}
           {activeTab === 'settings' && role === 'super' && <Settings />}
           {activeTab === 'admins' && role === 'super' && <Admins />}

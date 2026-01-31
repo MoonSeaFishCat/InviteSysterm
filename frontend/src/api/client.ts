@@ -11,16 +11,30 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 添加用户 token
-    const userToken = localStorage.getItem('user_token');
-    if (userToken) {
-      config.headers.Authorization = `Bearer ${userToken}`;
-    }
+    // 根据请求路径决定使用哪个 token
+    const url = config.url || '';
 
-    // 添加管理员 token
-    const adminToken = localStorage.getItem('admin_token');
-    if (adminToken) {
-      config.headers.Authorization = `Bearer ${adminToken}`;
+    if (url.startsWith('/admin/')) {
+      // 管理员接口使用管理员 token
+      const adminToken = localStorage.getItem('admin_token');
+      if (adminToken) {
+        config.headers.Authorization = `Bearer ${adminToken}`;
+      }
+    } else if (url.startsWith('/user/')) {
+      // 用户接口使用用户 token
+      const userToken = localStorage.getItem('user_token');
+      if (userToken) {
+        config.headers.Authorization = `Bearer ${userToken}`;
+      }
+    } else {
+      // 其他接口（如公开接口），优先使用用户 token，其次管理员 token
+      const userToken = localStorage.getItem('user_token');
+      const adminToken = localStorage.getItem('admin_token');
+      if (userToken) {
+        config.headers.Authorization = `Bearer ${userToken}`;
+      } else if (adminToken) {
+        config.headers.Authorization = `Bearer ${adminToken}`;
+      }
     }
 
     return config;
@@ -36,12 +50,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      // 未授权，清除 token 并跳转到登录页
-      localStorage.removeItem('user_token');
-      localStorage.removeItem('admin_token');
-      window.location.href = '/login';
-    }
+    // 不在拦截器中自动处理401，让各个页面自己处理
     return Promise.reject(error);
   }
 );

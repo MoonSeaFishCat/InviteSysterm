@@ -8,6 +8,9 @@ import UserRegister from './pages/UserRegister';
 import UserDashboard from './pages/user/Dashboard';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Forum from './pages/Forum';
+import ForumPost from './pages/ForumPost';
+import MyForum from './pages/user/MyForum';
 
 function App() {
   return (
@@ -19,6 +22,9 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/user/center" element={<UserDashboard />} />
+        <Route path="/user/my-forum" element={<MyForum />} />
+        <Route path="/forum" element={<Forum />} />
+        <Route path="/forum/:id" element={<ForumPost />} />
         <Route path="/admin/login" element={<Login />} />
         <Route path="/admin/dashboard" element={<Dashboard />} />
       </Routes>

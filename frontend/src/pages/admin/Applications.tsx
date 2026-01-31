@@ -158,23 +158,27 @@ export default function Applications() {
     onOpen();
   };
 
-  const handleCloseDetail = () => {
+  const handleCloseDetail = async () => {
     // 清除锁定刷新定时器
     if (lockRefreshInterval) {
       clearInterval(lockRefreshInterval);
       setLockRefreshInterval(null);
     }
 
-    // 解锁申请（只读模式不需要解锁）
-    if (selectedApp && !applicationDetail?.readOnly) {
-      api.post(`/admin/applications/${selectedApp.id}/unlock`).catch(err => {
-        console.error('Failed to unlock application:', err);
-      });
+    // 如果不是只读模式，释放锁定
+    if (selectedApp && applicationDetail && !applicationDetail.readOnly) {
+      try {
+        await api.post(`/admin/applications/${selectedApp.id}/unlock`);
+      } catch (error) {
+        console.error('Failed to unlock application:', error);
+      }
     }
 
-    setApplicationDetail(null);
     onClose();
+    setSelectedApp(null);
+    setApplicationDetail(null);
   };
+
 
   const submitReview = async () => {
     if (!selectedApp) return;

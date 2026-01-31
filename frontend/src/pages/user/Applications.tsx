@@ -162,6 +162,25 @@ export default function Applications() {
     onDetailOpen();
   };
 
+  const handleWithdrawAndEdit = async (app: any) => {
+    if (!confirm('确定要撤回并修改这个申请吗？撤回后您可以修改申请理由并重新提交。')) {
+      return;
+    }
+
+    try {
+      const res = await api.delete(`/user/applications/${app.id}`);
+      if (res.data.success) {
+        toast.success('申请已撤回，请修改后重新提交');
+        // 预填充原申请理由
+        setReason(app.reason || '');
+        onOpen();
+        fetchApplications();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || '撤回失败');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -250,14 +269,26 @@ export default function Applications() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Button
-                    size="sm"
-                    variant="flat"
-                    startContent={<FaEye />}
-                    onPress={() => handleViewDetail(app)}
-                  >
-                    查看详情
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      startContent={<FaEye />}
+                      onPress={() => handleViewDetail(app)}
+                    >
+                      查看详情
+                    </Button>
+                    {app.status === 'pending' && (
+                      <Button
+                        size="sm"
+                        color="warning"
+                        variant="flat"
+                        onPress={() => handleWithdrawAndEdit(app)}
+                      >
+                        撤回并修改
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             );
