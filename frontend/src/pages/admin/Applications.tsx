@@ -30,6 +30,8 @@ interface Application {
 interface ApplicationDetail {
   application: Application;
   history: Application[];
+  readOnly?: boolean;
+  lockedBy?: string;
 }
 
 export default function Applications() {
@@ -49,6 +51,7 @@ export default function Applications() {
   const [selectedKeys, setSelectedKeys] = useState<any>(new Set());
   const [applicationDetail, setApplicationDetail] = useState<ApplicationDetail | null>(null);
   const [lockRefreshInterval, setLockRefreshInterval] = useState<number | null>(null);
+  const [globalStats, setGlobalStats] = useState<any>(null);
 
   const {isOpen, onOpen, onClose} = useDisclosure();
   const deleteModal = useDisclosure();
@@ -69,7 +72,7 @@ export default function Applications() {
       };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery) params.search = searchQuery;
-      
+
       const res = await api.get('/admin/applications', { params });
       if (res.data && res.data.items) {
         setApps(res.data.items);
@@ -83,6 +86,19 @@ export default function Applications() {
       setLoading(false);
     }
   };
+
+  const fetchGlobalStats = async () => {
+    try {
+      const res = await api.get('/admin/stats');
+      setGlobalStats(res.data);
+    } catch (error: any) {
+      console.error("Failed to fetch global stats", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchGlobalStats();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -104,20 +120,28 @@ export default function Applications() {
       if (res.data.success) {
         setApplicationDetail(res.data);
 
-        // 启动锁定刷新定时器（每2分钟刷新一次）
-        const interval = window.setInterval(async () => {
-          try {
-            await api.post(`/admin/applications/${app.id}/refresh-lock`);
-          } catch (error: any) {
-            if (error.response?.status === 423) {
-              // 锁定被其他人占用
-              toast.error(error.response?.data?.message || '该申请已被其他审核员占用');
-              handleCloseDetail();
+        // 如果不是只读模式，启动锁定刷新定时器（每2分钟刷新一次）
+        if (!res.data.readOnly) {
+          const interval = window.setInterval(async () => {
+            try {
+              await api.post(`/admin/applications/${app.id}/refresh-lock`);
+            } catch (error: any) {
+              if (error.response?.status === 423) {
+                // 锁定被其他人占用
+                toast.error(error.response?.data?.message || '该申请已被其他审核员占用');
+                handleCloseDetail();
+              }
             }
-          }
-        }, 2 * 60 * 1000); // 2分钟
+          }, 2 * 60 * 1000); // 2分钟
 
-        setLockRefreshInterval(interval);
+          setLockRefreshInterval(interval);
+        } else {
+          // 只读模式，显示提示
+          toast(`该申请正在被 ${res.data.lockedBy} 审核中，您处于只读模式`, {
+            duration: 5000,
+            icon: 'ℹ️',
+          });
+        }
       } else if (res.data.locked) {
         // 申请被锁定
         toast.error(res.data.message || '该申请正在被其他审核员审核中');
@@ -141,8 +165,8 @@ export default function Applications() {
       setLockRefreshInterval(null);
     }
 
-    // 解锁申请
-    if (selectedApp) {
+    // 解锁申请（只读模式不需要解锁）
+    if (selectedApp && !applicationDetail?.readOnly) {
       api.post(`/admin/applications/${selectedApp.id}/unlock`).catch(err => {
         console.error('Failed to unlock application:', err);
       });
@@ -357,12 +381,12 @@ export default function Applications() {
     }
   };
 
-  // 统计数据
+  // 统计数据 - 使用全局统计数据
   const stats = {
-    total: apps.length,
-    pending: apps.filter(a => a.status === 'pending').length,
-    approved: apps.filter(a => a.status === 'approved').length,
-    rejected: apps.filter(a => a.status === 'rejected').length,
+    total: globalStats?.total_apps || 0,
+    pending: globalStats?.pending_apps || 0,
+    approved: globalStats?.approved_apps || 0,
+    rejected: globalStats?.rejected_apps || 0,
   };
 
   return (
@@ -623,10 +647,35 @@ export default function Applications() {
       >
         <ModalContent>
           <ModalHeader className="flex flex-col gap-1">
-            <h3 className="text-xl font-black">申请详情</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-xl font-black">申请详情</h3>
+              {applicationDetail?.readOnly && (
+                <Chip
+                  color="warning"
+                  variant="flat"
+                  size="sm"
+                  startContent={<FaClock className="text-xs" />}
+                >
+                  只读模式 - {applicationDetail.lockedBy} 正在审核
+                </Chip>
+              )}
+            </div>
             <p className="text-xs text-default-400 font-bold uppercase tracking-wider">ID: {selectedApp?.id} • {selectedApp?.email}</p>
           </ModalHeader>
-          <ModalBody className="gap-8">
+          <ModalBody className="gap-8">{applicationDetail?.readOnly && (
+              <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <FaInfoCircle className="text-warning text-lg mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-warning mb-1">只读模式</p>
+                    <p className="text-xs text-default-600">
+                      该申请正在被 <span className="font-bold text-warning">{applicationDetail.lockedBy}</span> 审核中。
+                      作为超级管理员，您可以查看详情，但无法提交审核。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* 基本信息网格 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
@@ -870,7 +919,7 @@ export default function Applications() {
             >
               关闭
             </Button>
-            {selectedApp?.status === 'pending' && (
+            {selectedApp?.status === 'pending' && !applicationDetail?.readOnly && (
               <Button
                 color={reviewStatus === 'approved' ? 'primary' : 'danger'}
                 onPress={submitReview}

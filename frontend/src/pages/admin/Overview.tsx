@@ -298,7 +298,7 @@ export default function Overview() {
                     <span className="font-bold">{stats?.total_tickets || 0}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-default-500">管理员数</span>
+                    <span className="text-sm text-default-500">审核员数</span>
                     <span className="font-bold">{stats?.total_admins || 0}</span>
                   </div>
                 </div>
@@ -440,8 +440,8 @@ export default function Overview() {
                       <FaUserShield className="text-green-600" />
                     </div>
                     <div>
-                      <p className="font-semibold">管理团队</p>
-                      <p className="text-xs text-default-500">系统管理员</p>
+                      <p className="font-semibold">审核团队</p>
+                      <p className="text-xs text-default-500">审核员数量</p>
                     </div>
                   </div>
                   <div className="text-right">

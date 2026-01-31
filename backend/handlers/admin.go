@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -126,32 +127,55 @@ func GetApplicationDetail(c *gin.Context) {
 	// 获取当前管理员信息
 	adminID, _ := c.Get("admin_id")
 	adminName, _ := c.Get("admin_username")
+	adminRole, _ := c.Get("admin_role")
 	currentAdminID := adminID.(int)
 	currentAdminName := adminName.(string)
+	currentAdminRole := adminRole.(string)
 
 	// 检查是否被其他管理员锁定
 	lockManager := services.GetLockManager()
 	isLocked, lock := lockManager.IsLocked(id, currentAdminID)
+
+	// 超级管理员可以查看正在审核的申请（只读模式）
+	isSuperAdmin := currentAdminRole == "super"
+	isReadOnly := false
+	var lockedByName string
+
 	if isLocked {
-		c.JSON(http.StatusLocked, gin.H{
-			"success":  false,
-			"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
-			"locked":   true,
-			"lockedBy": lock.AdminName,
-		})
-		return
+		if isSuperAdmin {
+			// 超级管理员可以查看，但是只读模式
+			isReadOnly = true
+			lockedByName = lock.AdminName
+		} else {
+			// 普通审核员被拦截
+			c.JSON(http.StatusLocked, gin.H{
+				"success":  false,
+				"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
+				"locked":   true,
+				"lockedBy": lock.AdminName,
+			})
+			return
+		}
 	}
 
-	// 尝试锁定申请
-	if !lockManager.LockApplication(id, currentAdminID, currentAdminName) {
-		lock := lockManager.GetLock(id)
-		c.JSON(http.StatusLocked, gin.H{
-			"success":  false,
-			"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
-			"locked":   true,
-			"lockedBy": lock.AdminName,
-		})
-		return
+	// 尝试锁定申请（超级管理员在只读模式下不锁定）
+	if !isReadOnly {
+		if !lockManager.LockApplication(id, currentAdminID, currentAdminName) {
+			lock := lockManager.GetLock(id)
+			if isSuperAdmin {
+				// 超级管理员进入只读模式
+				isReadOnly = true
+				lockedByName = lock.AdminName
+			} else {
+				c.JSON(http.StatusLocked, gin.H{
+					"success":  false,
+					"message":  fmt.Sprintf("该申请正在被 %s 审核中，请稍后再试", lock.AdminName),
+					"locked":   true,
+					"lockedBy": lock.AdminName,
+				})
+				return
+			}
+		}
 	}
 
 	// 获取当前申请详情
@@ -175,8 +199,10 @@ func GetApplicationDetail(c *gin.Context) {
 	)
 
 	if err != nil {
-		// 解锁
-		lockManager.UnlockApplication(id, currentAdminID)
+		// 解锁（只读模式不需要解锁）
+		if !isReadOnly {
+			lockManager.UnlockApplication(id, currentAdminID)
+		}
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
 		return
 	}
@@ -217,6 +243,8 @@ func GetApplicationDetail(c *gin.Context) {
 			"success":     true,
 			"application": app,
 			"history":     []models.Application{},
+			"readOnly":    isReadOnly,
+			"lockedBy":    lockedByName,
 		})
 		return
 	}
@@ -261,6 +289,8 @@ func GetApplicationDetail(c *gin.Context) {
 		"success":     true,
 		"application": app,
 		"history":     history,
+		"readOnly":    isReadOnly,
+		"lockedBy":    lockedByName,
 	})
 }
 
@@ -560,17 +590,53 @@ func AdminBatchDeleteApplications(c *gin.Context) {
 func AdminGetStats(c *gin.Context) {
 	var stats struct {
 		PendingApps   int `json:"pending_apps"`
+		ApprovedApps  int `json:"approved_apps"`
+		RejectedApps  int `json:"rejected_apps"`
 		TotalApps     int `json:"total_apps"`
 		OpenTickets   int `json:"open_tickets"`
+		TotalTickets  int `json:"total_tickets"`
 		TotalUsers    int `json:"total_users"`
 		TotalMessages int `json:"total_messages"`
+		TotalAdmins   int `json:"total_admins"`
 	}
 
-	database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE status = 'pending'").Scan(&stats.PendingApps)
-	database.DB.QueryRow("SELECT COUNT(*) FROM applications").Scan(&stats.TotalApps)
-	database.DB.QueryRow("SELECT COUNT(*) FROM tickets WHERE status = 'open'").Scan(&stats.OpenTickets)
-	database.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&stats.TotalUsers)
-	database.DB.QueryRow("SELECT COUNT(*) FROM messages").Scan(&stats.TotalMessages)
+	// 查询申请统计
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE status = 'pending'").Scan(&stats.PendingApps); err != nil {
+		log.Printf("Failed to query pending apps: %v", err)
+	}
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE status = 'approved'").Scan(&stats.ApprovedApps); err != nil {
+		log.Printf("Failed to query approved apps: %v", err)
+	}
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE status = 'rejected'").Scan(&stats.RejectedApps); err != nil {
+		log.Printf("Failed to query rejected apps: %v", err)
+	}
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM applications").Scan(&stats.TotalApps); err != nil {
+		log.Printf("Failed to query total apps: %v", err)
+	}
+
+	// 查询工单统计
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM tickets WHERE status = 'open'").Scan(&stats.OpenTickets); err != nil {
+		log.Printf("Failed to query open tickets: %v", err)
+	}
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM tickets").Scan(&stats.TotalTickets); err != nil {
+		log.Printf("Failed to query total tickets: %v", err)
+	}
+
+	// 查询用户统计
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&stats.TotalUsers); err != nil {
+		log.Printf("Failed to query total users: %v", err)
+	}
+
+	// 查询消息统计
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM messages").Scan(&stats.TotalMessages); err != nil {
+		log.Printf("Failed to query total messages: %v", err)
+	}
+
+	// 查询管理员统计
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM admins").Scan(&stats.TotalAdmins); err != nil {
+		log.Printf("Failed to query total admins: %v", err)
+		stats.TotalAdmins = 0
+	}
 
 	c.JSON(http.StatusOK, stats)
 }
