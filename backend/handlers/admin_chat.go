@@ -121,11 +121,11 @@ func SendAdminChatMessage(c *gin.Context) {
 	})
 }
 
-// DeleteAdminChatMessage 删除管理员聊天消息（仅超级管理员）
-func DeleteAdminChatMessage(c *gin.Context) {
+// DeleteChatMessage 删除聊天消息（仅超级管理员）
+func DeleteChatMessage(c *gin.Context) {
 	msgID := c.Param("id")
 
-	_, err := database.DB.Exec("DELETE FROM admin_chat_messages WHERE id = ?", msgID)
+	_, err := database.DB.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除失败"})
 		return
@@ -134,11 +134,11 @@ func DeleteAdminChatMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "删除成功"})
 }
 
-// PinAdminChatMessage 置顶管理员聊天消息（仅超级管理员）
-func PinAdminChatMessage(c *gin.Context) {
+// PinChatMessage 置顶聊天消息（仅超级管理员）
+func PinChatMessage(c *gin.Context) {
 	msgID := c.Param("id")
 
-	_, err := database.DB.Exec("UPDATE admin_chat_messages SET is_pinned = 1 WHERE id = ?", msgID)
+	_, err := database.DB.Exec("UPDATE chat_messages SET is_pinned = 1 WHERE id = ?", msgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "置顶失败"})
 		return
@@ -147,11 +147,11 @@ func PinAdminChatMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "置顶成功"})
 }
 
-// UnpinAdminChatMessage 取消置顶管理员聊天消息（仅超级管理员）
-func UnpinAdminChatMessage(c *gin.Context) {
+// UnpinChatMessage 取消置顶聊天消息（仅超级管理员）
+func UnpinChatMessage(c *gin.Context) {
 	msgID := c.Param("id")
 
-	_, err := database.DB.Exec("UPDATE admin_chat_messages SET is_pinned = 0 WHERE id = ?", msgID)
+	_, err := database.DB.Exec("UPDATE chat_messages SET is_pinned = 0 WHERE id = ?", msgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "取消置顶失败"})
 		return
@@ -160,11 +160,11 @@ func UnpinAdminChatMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "取消置顶成功"})
 }
 
-// FeatureAdminChatMessage 加精管理员聊天消息（仅超级管理员）
-func FeatureAdminChatMessage(c *gin.Context) {
+// FeatureChatMessage 加精聊天消息（仅超级管理员）
+func FeatureChatMessage(c *gin.Context) {
 	msgID := c.Param("id")
 
-	_, err := database.DB.Exec("UPDATE admin_chat_messages SET is_featured = 1 WHERE id = ?", msgID)
+	_, err := database.DB.Exec("UPDATE chat_messages SET is_featured = 1 WHERE id = ?", msgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "加精失败"})
 		return
@@ -173,11 +173,11 @@ func FeatureAdminChatMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "加精成功"})
 }
 
-// UnfeatureAdminChatMessage 取消加精管理员聊天消息（仅超级管理员）
-func UnfeatureAdminChatMessage(c *gin.Context) {
+// UnfeatureChatMessage 取消加精聊天消息（仅超级管理员）
+func UnfeatureChatMessage(c *gin.Context) {
 	msgID := c.Param("id")
 
-	_, err := database.DB.Exec("UPDATE admin_chat_messages SET is_featured = 0 WHERE id = ?", msgID)
+	_, err := database.DB.Exec("UPDATE chat_messages SET is_featured = 0 WHERE id = ?", msgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "取消加精失败"})
 		return

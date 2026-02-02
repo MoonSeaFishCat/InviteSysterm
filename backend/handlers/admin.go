@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"invite-backend/database"
@@ -180,7 +181,7 @@ func GetApplicationDetail(c *gin.Context) {
 
 	// 获取当前申请详情
 	var app models.Application
-	var createdAtVal, updatedAtVal interface{}
+	var createdAtVal, updatedAtVal any
 	var adminNote, reviewOpinion, adminUsername sql.NullString
 	var processedBy sql.NullInt64
 
@@ -216,8 +217,8 @@ func GetApplicationDetail(c *gin.Context) {
 		app.ReviewOpinion = reviewOpinion.String
 	}
 	if processedBy.Valid {
-		id := int(processedBy.Int64)
-		app.ProcessedBy = &id
+		pID := int(processedBy.Int64)
+		app.ProcessedBy = &pID
 	}
 	if adminUsername.Valid {
 		app.AdminUsername = adminUsername.String
@@ -253,11 +254,11 @@ func GetApplicationDetail(c *gin.Context) {
 	var history []models.Application
 	for rows.Next() {
 		var histApp models.Application
-		var hCreatedAtVal, hUpdatedAtVal interface{}
+		var hCreatedAtVal, hUpdatedAtVal any
 		var hAdminNote, hReviewOpinion, hAdminUsername sql.NullString
 		var hProcessedBy sql.NullInt64
 
-		err := rows.Scan(
+		err = rows.Scan(
 			&histApp.ID, &histApp.Email, &histApp.Reason, &histApp.Status,
 			&histApp.DeviceID, &histApp.IP, &hCreatedAtVal, &hUpdatedAtVal, &hAdminNote, &hReviewOpinion,
 			&hProcessedBy, &hAdminUsername,
@@ -275,8 +276,8 @@ func GetApplicationDetail(c *gin.Context) {
 			histApp.ReviewOpinion = hReviewOpinion.String
 		}
 		if hProcessedBy.Valid {
-			id := int(hProcessedBy.Int64)
-			histApp.ProcessedBy = &id
+			hPID := int(hProcessedBy.Int64)
+			histApp.ProcessedBy = &hPID
 		}
 		if hAdminUsername.Valid {
 			histApp.AdminUsername = hAdminUsername.String
@@ -285,10 +286,37 @@ func GetApplicationDetail(c *gin.Context) {
 		history = append(history, histApp)
 	}
 
+	// 获取申请的投票信息
+	rows, err = database.DB.Query(`
+		SELECT id, voter_id, voter_username, opinion, comment, created_at
+		FROM application_votes
+		WHERE application_id = ?
+		ORDER BY created_at DESC
+	`, id)
+	var votes []models.ApplicationVote
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var v models.ApplicationVote
+			var vComment sql.NullString
+			var vCreatedAt int64
+			if err := rows.Scan(&v.ID, &v.VoterID, &v.VoterUsername, &v.Opinion, &vComment, &vCreatedAt); err != nil {
+				continue
+			}
+			if vComment.Valid {
+				v.Comment = vComment.String
+			}
+			v.CreatedAt = time.Unix(vCreatedAt, 0)
+			v.ApplicationID = id
+			votes = append(votes, v)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success":     true,
 		"application": app,
 		"history":     history,
+		"votes":       votes,
 		"readOnly":    isReadOnly,
 		"lockedBy":    lockedByName,
 	})
@@ -313,7 +341,14 @@ func ReviewApplication(c *gin.Context) {
 
 	// 获取当前管理员信息
 	adminID, _ := c.Get("admin_id")
+	adminRole, _ := c.Get("admin_role")
 	currentAdminID := adminID.(int)
+	currentAdminRole := adminRole.(string)
+
+	if currentAdminRole == "commenter" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "评论员无权审核申请，只能投票"})
+		return
+	}
 
 	// 检查锁定状态
 	lockManager := services.GetLockManager()
@@ -378,6 +413,16 @@ func ReviewApplication(c *gin.Context) {
 				return
 			}
 		}
+	}
+
+	// 更新管理员审核统计
+	_, err = tx.Exec(
+		"UPDATE admins SET audit_count = audit_count + 1, last_audit_at = ?, updated_at = ? WHERE id = ?",
+		time.Now().Unix(), time.Now().Unix(), adminIDForUpdate,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新管理员统计失败"})
+		return
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -512,6 +557,7 @@ func AdminBatchReviewApplications(c *gin.Context) {
 	now := time.Now().Unix()
 	emailService, _ := services.GetEmailService()
 
+	processedCount := 0
 	for _, appID := range req.AppIDs {
 		var email string
 		err := tx.QueryRow("SELECT email FROM applications WHERE id = ?", appID).Scan(&email)
@@ -527,6 +573,7 @@ func AdminBatchReviewApplications(c *gin.Context) {
 		if err != nil {
 			continue
 		}
+		processedCount++
 
 		// 记录日志
 		tx.Exec(
@@ -545,6 +592,14 @@ func AdminBatchReviewApplications(c *gin.Context) {
 				go emailService.SendRejectionEmail(email, req.Data.Opinion)
 			}
 		}
+	}
+
+	// 更新管理员审核统计
+	if processedCount > 0 {
+		_, _ = tx.Exec(
+			"UPDATE admins SET audit_count = audit_count + ?, last_audit_at = ?, updated_at = ? WHERE id = ?",
+			processedCount, now, now, adminID,
+		)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -888,24 +943,32 @@ func AddAdmin(c *gin.Context) {
 		return
 	}
 
-	if req.Role != "super" && req.Role != "reviewer" {
+	req.Username = strings.TrimSpace(req.Username)
+	req.Password = strings.TrimSpace(req.Password)
+
+	if req.Role != "super" && req.Role != "reviewer" && req.Role != "commenter" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "角色无效"})
 		return
 	}
 
-	// 检查是否允许新增审核员
-	if req.Role == "reviewer" {
+	// 检查是否允许新增审核员/评论员
+	if req.Role == "reviewer" || req.Role == "commenter" {
 		settings, _ := services.GetSystemSettings()
 		if settings["allow_auto_admin_reg"] == "false" {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "系统已关闭新增审核员功能"})
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "系统已关闭新增管理员功能"})
 			return
 		}
 
-		// 如果没有指定权限，使用默认审核员权限
+		// 如果没有指定权限，使用默认权限
 		if req.Permissions == "" {
-			req.Permissions = settings["default_reviewer_permissions"]
-			if req.Permissions == "" {
-				req.Permissions = "applications,tickets,messages"
+			if req.Role == "reviewer" {
+				req.Permissions = settings["default_reviewer_permissions"]
+				if req.Permissions == "" {
+					req.Permissions = "applications,tickets,messages"
+				}
+			} else {
+				// 评论员默认权限较少
+				req.Permissions = "overview,ranking,chat"
 			}
 		}
 	} else if req.Role == "super" {
@@ -979,11 +1042,13 @@ func UpdateAdmin(c *gin.Context) {
 		return
 	}
 
+	req.Password = strings.TrimSpace(req.Password)
+
 	query := "UPDATE admins SET updated_at = ?"
 	args := []interface{}{time.Now().Unix()}
 
 	if req.Role != "" {
-		if req.Role != "super" && req.Role != "reviewer" {
+		if req.Role != "super" && req.Role != "reviewer" && req.Role != "commenter" {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "角色无效"})
 			return
 		}
@@ -999,10 +1064,19 @@ func UpdateAdmin(c *gin.Context) {
 		} else {
 			args = append(args, req.Permissions)
 		}
-	} else if req.Role == "reviewer" && req.Permissions == "" {
-		// 如果切换回审核员且没传权限，清空或设为默认
+	} else if (req.Role == "reviewer" || req.Role == "commenter") && req.Permissions == "" {
+		// 如果切换回审核员/评论员且没传权限，设为默认
 		query += ", permissions = ?"
-		args = append(args, "")
+		if req.Role == "reviewer" {
+			settings, _ := services.GetSystemSettings()
+			perms := settings["default_reviewer_permissions"]
+			if perms == "" {
+				perms = "applications,tickets,messages"
+			}
+			args = append(args, perms)
+		} else {
+			args = append(args, "overview,ranking,chat")
+		}
 	}
 
 	if req.Password != "" {
@@ -1024,6 +1098,112 @@ func UpdateAdmin(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "管理员信息已更新"})
+}
+
+// GetAuditorKPI 获取审核员 KPI 统计
+func GetAuditorKPI(c *gin.Context) {
+	adminID, _ := c.Get("admin_id")
+	role, _ := c.Get("admin_role")
+
+	if role != "reviewer" && role != "super" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无权访问"})
+		return
+	}
+
+	// 如果是超管，可以查询特定审核员，否则只能查自己
+	targetID := adminID.(int)
+	if role == "super" {
+		if idStr := c.Query("id"); idStr != "" {
+			if id, err := strconv.Atoi(idStr); err == nil {
+				targetID = id
+			}
+		}
+	}
+
+	// 获取指标设置
+	var quotaStr string
+	_ = database.DB.QueryRow("SELECT value FROM settings WHERE key = 'weekly_audit_quota'").Scan(&quotaStr)
+	quota, _ := strconv.Atoi(quotaStr)
+
+	sevenDaysAgo := time.Now().AddDate(0, 0, -7).Unix()
+
+	// 统计过去7天审核量 (仅包含直接处理)
+	var count int
+	_ = database.DB.QueryRow(`
+		SELECT COUNT(*) FROM applications 
+		WHERE processed_by = ? AND updated_at >= ? AND status IN ('approved', 'rejected')
+	`, targetID, sevenDaysAgo).Scan(&count)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"quota": quota,
+			"count": count,
+			"remaining": func() int {
+				if quota-count < 0 {
+					return 0
+				}
+				return quota - count
+			}(),
+			"is_met": count >= quota,
+		},
+	})
+}
+
+// GetPendingPrivateMessages 获取待回复的私信列表
+func GetPendingPrivateMessages(c *gin.Context) {
+	adminIDInterface, _ := c.Get("admin_id")
+	adminID, ok := adminIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未授权"})
+		return
+	}
+
+	// 查询所有发给当前管理员，且该用户没有收到当前管理员回复的最新私信
+	rows, err := database.DB.Query(`
+		SELECT m1.id, m1.sender_id, m1.sender_username, m1.sender_type, m1.content, m1.created_at
+		FROM chat_messages m1
+		WHERE m1.receiver_id = ? AND m1.receiver_type = 'admin'
+		AND m1.id = (
+			SELECT MAX(id) FROM chat_messages 
+			WHERE sender_id = m1.sender_id AND sender_type = m1.sender_type
+			AND receiver_id = ? AND receiver_type = 'admin'
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM chat_messages 
+			WHERE sender_id = ? AND sender_type = 'admin'
+			AND receiver_id = m1.sender_id AND receiver_type = m1.sender_type
+			AND id > m1.id
+		)
+		ORDER BY m1.created_at DESC
+	`, adminID, adminID, adminID)
+
+	if err != nil {
+		fmt.Printf("GetPendingPrivateMessages query error: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取待回复私信失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var messages []map[string]interface{}
+	for rows.Next() {
+		var id, senderID int
+		var senderUsername, senderType, message string
+		var createdAt int64
+		if err := rows.Scan(&id, &senderID, &senderUsername, &senderType, &message, &createdAt); err != nil {
+			continue
+		}
+		messages = append(messages, map[string]interface{}{
+			"id":              id,
+			"sender_id":       senderID,
+			"sender_username": senderUsername,
+			"sender_type":     senderType,
+			"message":         message,
+			"created_at":      createdAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": messages})
 }
 
 // BatchUpdateAdminPermissions 批量更新管理员权限
@@ -1301,6 +1481,8 @@ func ResetUserPassword(c *gin.Context) {
 		return
 	}
 
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
+
 	passwordHash := utils.HashPassword(req.NewPassword)
 	_, err := database.DB.Exec(
 		"UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
@@ -1472,6 +1654,138 @@ func DeleteBlacklist(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "已从黑名单移除"})
+}
+
+// AdminBatchDeleteAdmins 批量删除管理员
+func AdminBatchDeleteAdmins(c *gin.Context) {
+	var req struct {
+		AdminIDs []int `json:"adminIds" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	currentAdminID, _ := c.Get("admin_id")
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	successCount := 0
+	skippedCount := 0
+
+	for _, id := range req.AdminIDs {
+		// 不能删除自己
+		if id == currentAdminID.(int) {
+			skippedCount++
+			continue
+		}
+
+		// 检查是否是超级管理员
+		var role string
+		err := tx.QueryRow("SELECT role FROM admins WHERE id = ?", id).Scan(&role)
+		if err != nil {
+			skippedCount++
+			continue
+		}
+
+		if role == "super" {
+			var superCount int
+			tx.QueryRow("SELECT COUNT(*) FROM admins WHERE role = 'super'").Scan(&superCount)
+			if superCount <= 1 {
+				skippedCount++
+				continue
+			}
+		}
+
+		_, err = tx.Exec("DELETE FROM admins WHERE id = ?", id)
+		if err != nil {
+			skippedCount++
+			continue
+		}
+		successCount++
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功删除 %d 个管理员，跳过 %d 个", successCount, skippedCount),
+	})
+}
+
+// AdminBatchDeleteUsers 批量删除用户
+func AdminBatchDeleteUsers(c *gin.Context) {
+	var req struct {
+		UserIDs []int `json:"userIds" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	for _, id := range req.UserIDs {
+		tx.Exec("DELETE FROM users WHERE id = ?", id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "批量删除用户成功"})
+}
+
+// AdminBatchUpdateUserStatus 批量更新用户状态
+func AdminBatchUpdateUserStatus(c *gin.Context) {
+	var req struct {
+		UserIDs []int  `json:"userIds" binding:"required"`
+		Status  string `json:"status" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != "active" && req.Status != "banned" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "状态值无效"})
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "系统错误"})
+		return
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Unix()
+	for _, id := range req.UserIDs {
+		tx.Exec("UPDATE users SET status = ?, updated_at = ? WHERE id = ?", req.Status, now, id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "提交事务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "批量更新用户状态成功"})
 }
 
 // CheckBlacklist 检查是否在黑名单中（内部使用）

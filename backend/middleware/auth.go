@@ -36,13 +36,19 @@ func AuthMiddleware() gin.HandlerFunc {
 						adminID := int(claims["id"].(float64))
 						c.Set("admin_id", adminID)
 						c.Set("admin_username", claims["username"].(string))
-						c.Set("admin_role", claims["role"].(string))
 
-						// 从数据库获取权限信息
-						var permissions string
-						err := database.DB.QueryRow("SELECT permissions FROM admins WHERE id = ?", adminID).Scan(&permissions)
+						// 从数据库实时获取最新的角色和权限信息，确保角色变更能立即生效
+						var dbRole, dbPermissions string
+						err := database.DB.QueryRow("SELECT role, permissions FROM admins WHERE id = ?", adminID).Scan(&dbRole, &dbPermissions)
 						if err == nil {
-							c.Set("admin_permissions", permissions)
+							c.Set("admin_role", dbRole)
+							c.Set("admin_permissions", dbPermissions)
+						} else {
+							// 如果数据库查询失败，则回退到 Token 中的信息
+							c.Set("admin_role", claims["role"].(string))
+							if p, ok := claims["permissions"].(string); ok {
+								c.Set("admin_permissions", p)
+							}
 						}
 
 						c.Next()

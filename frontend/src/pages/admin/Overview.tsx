@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Card, CardBody, CardHeader, Button, Divider, Chip, Progress, Skeleton } from "@heroui/react";
+import { Card, CardBody, CardHeader, Button, Divider, Chip, Progress, Skeleton, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Textarea } from "@heroui/react";
 import api from '../../api/client';
+import { storage } from '../../utils/storage';
+import toast from 'react-hot-toast';
 import {
   FaUsers,
   FaPaperPlane,
@@ -22,14 +24,75 @@ import { useNavigate } from 'react-router-dom';
 export default function Overview() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<any>({});
+  const [userInfo, setUserInfo] = useState<any>(storage.get('admin_user'));
   const navigate = useNavigate();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+  const [showRules, setShowRules] = useState(false);
+  const [kpi, setKpi] = useState<any>(null);
+
+  const role = userInfo?.role || 'commenter';
 
   useEffect(() => {
     fetchStats();
+    fetchSettings();
+    fetchUserInfo();
+    if (role === 'reviewer' || role === 'super') {
+      fetchKPI();
+    }
     // 每30秒自动刷新一次
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(() => {
+      fetchStats();
+      fetchUserInfo();
+      if (role === 'reviewer' || role === 'super') {
+        fetchKPI();
+      }
+    }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [role]);
+
+  const fetchKPI = async () => {
+    try {
+      const res = await api.get('/admin/admins/kpi');
+      if (res.data.success) {
+        setKpi(res.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch KPI", error);
+      // 如果获取失败，可能是后端还没部署好或者权限问题
+      setKpi(null);
+    }
+  };
+
+  const fetchUserInfo = async () => {
+    try {
+      const res = await api.get('/admin/me');
+      if (res.data.success) {
+        const newData = { ...userInfo, ...res.data.data };
+        setUserInfo(newData);
+        storage.set('admin_user', newData);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user info", error);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/admin/settings');
+      setSettings(res.data);
+    } catch (error: any) {
+      console.error("Failed to fetch settings", error);
+      // 如果获取失败且是 403 权限问题，说明当前角色无法获取设置
+      // 这种情况下我们可以根据业务需求设置一些默认值，或者静默失败
+      if (error.response?.status === 403) {
+        console.warn("Current role does not have permission to access settings.");
+      }
+    }
+  };
 
   const fetchStats = async () => {
     setLoading(true);
@@ -43,14 +106,66 @@ export default function Overview() {
     }
   };
 
+  useEffect(() => {
+    let timer: any;
+    if (showRules && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (showRules && countdown === 0) {
+      handleApplyAuditor();
+      setShowRules(false);
+    }
+    return () => clearInterval(timer);
+  }, [showRules, countdown]);
+
+  const handleOpenApply = () => {
+    if (settings.auditor_no_review === 'true') {
+      setShowRules(true);
+      setCountdown(10);
+    } else {
+      setShowRules(false);
+    }
+    onOpen();
+  };
+
+  const handleApplyAuditor = async () => {
+    if (settings.auditor_no_review !== 'true' && !reason.trim()) {
+      toast.error("请输入申请理由");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.post('/admin/auditor/apply', { 
+        reason: settings.auditor_no_review === 'true' ? '' : reason 
+      });
+      if (res.data.success) {
+        toast.success(res.data.message || "申请成功");
+        onClose();
+        setReason('');
+        // 角色可能已经改变，提示用户刷新
+        if (settings.auditor_no_review === 'true' || res.data.message.includes('免审核')) {
+          toast.loading("角色已更新，正在刷新页面...", { duration: 2000 });
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "申请失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // 计算申请通过率
-  const approvalRate = stats?.total_apps > 0
+  const approvalRate = (stats?.total_apps || 0) > 0
     ? ((stats?.approved_apps || 0) / stats.total_apps * 100).toFixed(1)
     : 0;
 
   // 计算工单处理率
-  const ticketProcessRate = stats?.total_tickets > 0
-    ? (((stats?.total_tickets - stats?.open_tickets) || 0) / stats.total_tickets * 100).toFixed(1)
+  const ticketProcessRate = (stats?.total_tickets || 0) > 0
+    ? (((stats?.total_tickets - (stats?.open_tickets || 0)) || 0) / stats.total_tickets * 100).toFixed(1)
     : 0;
 
   const primaryStats = [
@@ -119,10 +234,32 @@ export default function Overview() {
     }
   ];
 
+  const roleMap: any = {
+    'super': { label: '超级管理员', color: 'danger' },
+    'reviewer': { label: '审核员', color: 'primary' },
+    'commenter': { label: '评论员', color: 'success' }
+  };
+
+  const getPermissionLabels = (perms: string) => {
+    if (!perms) return '无特别权限';
+    if (perms === 'all') return '所有权限';
+    const permMap: any = {
+      'users': '用户管理',
+      'applications': '申请审核',
+      'settings': '系统设置',
+      'admins': '管理员管理',
+      'messages': '站内信',
+      'tickets': '工单处理',
+      'blacklist': '黑名单',
+      'announcements': '公告管理'
+    };
+    return perms.split(',').map(p => permMap[p.trim()] || p.trim()).join(', ');
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      {/* 页面标题 */}
-      <div className="flex justify-between items-center">
+      {/* 页面标题和用户信息 */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold flex items-center gap-3">
             <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 text-white">
@@ -130,22 +267,74 @@ export default function Overview() {
             </div>
             数据概览
           </h2>
-          <p className="text-default-500 text-sm mt-2">
-            实时监控系统运行状态 · 最后更新: {new Date().toLocaleTimeString()}
-          </p>
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <Chip 
+              variant="flat" 
+              color={roleMap[role]?.color || "default"}
+              startContent={<FaUserShield className="ml-1" />}
+              className="font-bold"
+            >
+              当前角色: {roleMap[role]?.label || role}
+            </Chip>
+            <div className="flex items-center gap-2 text-default-500 text-xs bg-default-100 px-3 py-1 rounded-full">
+              <span className="font-semibold text-default-600">拥有的权限:</span>
+              <span>{getPermissionLabels(userInfo?.permissions)}</span>
+            </div>
+          </div>
         </div>
-        <Button
-          isIconOnly
-          variant="flat"
-          color="primary"
-          onPress={fetchStats}
-          isLoading={loading}
-          radius="full"
-          size="lg"
-        >
-          <FaSync size={16} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <p className="text-default-400 text-xs hidden sm:block">
+            最后更新: {new Date().toLocaleTimeString()}
+          </p>
+          <Button
+            isIconOnly
+            variant="flat"
+            color="primary"
+            onPress={() => { fetchStats(); fetchUserInfo(); }}
+            isLoading={loading}
+            radius="full"
+            size="lg"
+          >
+            <FaSync size={16} />
+          </Button>
+        </div>
       </div>
+
+      {/* KPI 提示消息 */}
+      {(role === 'reviewer' || role === 'super') && kpi && (
+        <Card className={`border-none shadow-md bg-gradient-to-r ${kpi.is_met ? 'from-success-50/50 to-success-100/50' : 'from-warning-50/50 to-warning-100/50'}`}>
+          <CardBody className="py-4 px-6 flex flex-row items-center gap-4">
+            <div className={`p-3 rounded-full ${kpi.is_met ? 'bg-success text-white' : 'bg-warning text-white'}`}>
+              {kpi.is_met ? <FaCheckCircle size={20} /> : <FaExclamationTriangle size={20} />}
+            </div>
+            <div className="flex-1">
+              <h4 className={`font-bold ${kpi.is_met ? 'text-success-700' : 'text-warning-700'} flex items-center gap-2`}>
+                {kpi.is_met ? '本周审核指标已达成' : '本周审核指标待完成'}
+                {kpi.is_met && <Chip size="sm" color="success" variant="flat">达标</Chip>}
+              </h4>
+              <p className="text-sm text-default-600">
+                本周已审核: <span className="font-bold text-default-900">{kpi.count}</span> / 最小要求: <span className="font-bold text-default-900">{kpi.quota}</span>
+                {kpi.remaining > 0 ? `，还需完成 ${kpi.remaining} 份申请审核。` : '，感谢您的辛勤工作！'}
+              </p>
+              {!kpi.is_met && role === 'reviewer' && (
+                <p className="text-xs text-danger-500 mt-1 font-medium flex items-center gap-1">
+                  <FaExclamationTriangle size={10} />
+                  注意：若本周结束时未达到最小审核量（{kpi.quota}），系统将自动回收权限并拉黑。
+                </p>
+              )}
+            </div>
+            <div className="hidden md:block w-32">
+              <Progress 
+                size="sm" 
+                value={(kpi.count / kpi.quota) * 100} 
+                color={kpi.is_met ? "success" : "warning"}
+                className="max-w-md"
+              />
+              <p className="text-[10px] text-center mt-1 text-default-400">完成进度: {Math.min(100, Math.round((kpi.count / kpi.quota) * 100))}%</p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* 主要统计卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -242,13 +431,13 @@ export default function Overview() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">申请拒绝率</span>
                     <span className="text-sm font-bold text-danger">
-                      {stats?.total_apps > 0
+                      {(stats?.total_apps || 0) > 0
                         ? ((stats?.rejected_apps || 0) / stats.total_apps * 100).toFixed(1)
                         : 0}%
                     </span>
                   </div>
                   <Progress
-                    value={stats?.total_apps > 0
+                    value={(stats?.total_apps || 0) > 0
                       ? ((stats?.rejected_apps || 0) / stats.total_apps * 100)
                       : 0}
                     color="danger"
@@ -453,6 +642,118 @@ export default function Overview() {
           </CardBody>
         </Card>
       </div>
+
+      {/* 申请成为审核员 (仅限普通管理员/评论员) */}
+      {role === 'commenter' && (
+        <Card className="shadow-lg border-none bg-gradient-to-br from-primary-500/10 to-secondary-500/10 border-1 border-primary/20">
+          <CardHeader className="px-6 py-4 border-b border-divider/50">
+            <div className="flex items-center gap-2">
+              <FaUserShield className="text-primary" />
+              <h3 className="font-bold text-lg">加入审核团队</h3>
+            </div>
+          </CardHeader>
+          <CardBody className="p-6 flex flex-col gap-4">
+            <p className="text-sm text-default-600">
+              你想参与到平台的申请审核中吗？作为审核员，你可以为每一份申请投出宝贵的一票。
+            </p>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs text-default-500">
+                <FaCheckCircle className="text-success" />
+                <span>参与投票决策</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-default-500">
+                <FaCheckCircle className="text-success" />
+                <span>进入审核员排行榜</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-default-500">
+                <FaCheckCircle className="text-success" />
+                <span>获得专属勋章</span>
+              </div>
+            </div>
+            <Button 
+              color="primary" 
+              className="mt-2 font-bold"
+              onPress={handleOpenApply}
+              startContent={<FaPaperPlane />}
+            >
+              立即申请
+            </Button>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* 申请模态框 */}
+      <Modal isOpen={isOpen} onClose={onClose} size="md">
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">
+            {showRules ? "审核员工作要求和规则" : "申请成为审核员"}
+          </ModalHeader>
+          <ModalBody>
+            {showRules ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-primary-50 rounded-xl border border-primary-100">
+                  <h4 className="font-bold text-primary mb-2 flex items-center gap-2">
+                    <FaExclamationTriangle /> 审核员守则
+                  </h4>
+                  <ul className="text-xs text-default-600 space-y-2 list-disc pl-4">
+                    <li>客观公正：根据申请人的理由和活跃度进行客观评价。</li>
+                    <li>严禁泄露：不得向外界泄露申请人的个人隐私信息。</li>
+                    <li>保持活跃：长期不参与审核可能会被收回权限。</li>
+                    <li>严禁滥用：禁止恶意投反对票或无理由通过申请。</li>
+                  </ul>
+                </div>
+                <div className="flex flex-col items-center justify-center py-4 gap-2">
+                  <Progress 
+                    value={countdown * 10} 
+                    color="primary" 
+                    className="max-w-xs"
+                    showValueLabel={true}
+                    label={`申请处理中，请阅读守则...`}
+                    formatOptions={{ style: 'unit', unit: 'second' }}
+                    valueLabel={`${countdown}s`}
+                  />
+                  <p className="text-tiny text-default-400">倒计时结束将自动为您开通权限</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-default-500">
+                  请简述你的申请理由（例如：你的活跃度、为什么想加入审核团队等）。
+                </p>
+                <Textarea
+                  label="申请理由"
+                  placeholder="请输入你的申请理由..."
+                  value={reason}
+                  onValueChange={setReason}
+                  minRows={4}
+                  variant="flat"
+                />
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            {!showRules && (
+              <>
+                <Button variant="light" onPress={onClose} isDisabled={submitting}>
+                  取消
+                </Button>
+                <Button 
+                  color="primary" 
+                  onPress={handleApplyAuditor}
+                  isLoading={submitting}
+                >
+                  提交申请
+                </Button>
+              </>
+            )}
+            {showRules && (
+              <Button color="danger" variant="flat" onPress={onClose}>
+                我再想想 (取消申请)
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }

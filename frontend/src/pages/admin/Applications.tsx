@@ -3,7 +3,7 @@ import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   useDisclosure, Textarea, Input, Spinner, Select, SelectItem, Pagination,
-  Tooltip, Card, CardBody, Badge, Progress
+  Tooltip, Card, CardBody, Badge, Progress, Avatar
 } from "@heroui/react";
 import {
   FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope,
@@ -34,6 +34,9 @@ interface ApplicationDetail {
   lockedBy?: string;
 }
 
+import type { ApplicationVote } from '../../types';
+import { FaThumbsUp, FaThumbsDown, FaCommentDots } from 'react-icons/fa';
+
 export default function Applications() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +55,9 @@ export default function Applications() {
   const [applicationDetail, setApplicationDetail] = useState<ApplicationDetail | null>(null);
   const [lockRefreshInterval, setLockRefreshInterval] = useState<number | null>(null);
   const [globalStats, setGlobalStats] = useState<any>(null);
+  const [votes, setVotes] = useState<ApplicationVote[]>([]);
+  const [myVote, setMyVote] = useState<{opinion: string, comment: string}>({opinion: 'agree', comment: ''});
+  const [voting, setVoting] = useState(false);
 
   const {isOpen, onOpen, onClose} = useDisclosure();
   const deleteModal = useDisclosure();
@@ -60,8 +66,35 @@ export default function Applications() {
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
 
   // Get user role
-  const user = storage.get('admin_user') || {};
-  const role = user.role || 'reviewer';
+  const adminUser = storage.get('admin_user') || {};
+  const role = adminUser.role || 'reviewer';
+
+  const fetchVotes = async (appId: number) => {
+    try {
+      const res = await api.get(`/admin/applications/${appId}/votes`);
+      if (res.data.success) {
+        setVotes(res.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch votes", error);
+    }
+  };
+
+  const handleVote = async () => {
+    if (!selectedApp) return;
+    setVoting(true);
+    try {
+      const res = await api.post(`/admin/applications/${selectedApp.id}/vote`, myVote);
+      if (res.data.success) {
+        toast.success("投票成功");
+        fetchVotes(selectedApp.id);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "投票失败");
+    } finally {
+      setVoting(false);
+    }
+  };
 
   const fetchApps = async () => {
     setLoading(true);
@@ -113,6 +146,8 @@ export default function Applications() {
     setInviteCode('');
     setAdminNote(app.adminNote || '');
     setReviewOpinion(app.reviewOpinion || '');
+    setVotes([]);
+    fetchVotes(app.id);
 
     // 获取详细信息和历史记录
     try {
@@ -120,30 +155,27 @@ export default function Applications() {
       if (res.data.success) {
         setApplicationDetail(res.data);
 
-        // 如果不是只读模式，启动锁定刷新定时器（每2分钟刷新一次）
-        if (!res.data.readOnly) {
+        // 如果不是只读模式且不是评论员，启动锁定刷新定时器
+        if (!res.data.readOnly && role !== 'commenter') {
           const interval = window.setInterval(async () => {
             try {
               await api.post(`/admin/applications/${app.id}/refresh-lock`);
             } catch (error: any) {
               if (error.response?.status === 423) {
-                // 锁定被其他人占用
                 toast.error(error.response?.data?.message || '该申请已被其他审核员占用');
                 handleCloseDetail();
               }
             }
-          }, 2 * 60 * 1000); // 2分钟
+          }, 2 * 60 * 1000);
 
           setLockRefreshInterval(interval);
-        } else {
-          // 只读模式，显示提示
+        } else if (res.data.readOnly) {
           toast(`该申请正在被 ${res.data.lockedBy} 审核中，您处于只读模式`, {
             duration: 5000,
             icon: 'ℹ️',
           });
         }
       } else if (res.data.locked) {
-        // 申请被锁定
         toast.error(res.data.message || '该申请正在被其他审核员审核中');
         return;
       }
@@ -495,44 +527,48 @@ export default function Applications() {
       {/* 操作栏 */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-content1 p-4 rounded-large shadow-sm border border-divider">
         <div className="flex gap-2">
-          <Badge
-            content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
-            color="primary"
-            isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
-          >
-            <Button
-              size="sm"
-              color="primary"
-              variant="flat"
-              isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
-              onPress={() => {
-                setReviewOpinion('');
-                setAdminNote('');
-                batchReviewModal.onOpen();
-              }}
-              className="h-10 px-4 rounded-lg font-bold"
-              startContent={<FaUserShield />}
-            >
-              批量审核
-            </Button>
-          </Badge>
-          <Badge
-            content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
-            color="danger"
-            isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
-          >
-            <Button
-              size="sm"
-              color="danger"
-              variant="flat"
-              isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
-              onPress={batchDeleteModal.onOpen}
-              className="h-10 px-4 rounded-lg font-bold"
-              startContent={<FaTrash />}
-            >
-              批量删除
-            </Button>
-          </Badge>
+          {role !== 'commenter' && (
+            <>
+              <Badge
+                content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
+                color="primary"
+                isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+              >
+                <Button
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+                  onPress={() => {
+                    setReviewOpinion('');
+                    setAdminNote('');
+                    batchReviewModal.onOpen();
+                  }}
+                  className="h-10 px-4 rounded-lg font-bold"
+                  startContent={<FaUserShield />}
+                >
+                  批量审核
+                </Button>
+              </Badge>
+              <Badge
+                content={selectedKeys === "all" ? apps.length : (selectedKeys instanceof Set ? selectedKeys.size : 0)}
+                color="danger"
+                isInvisible={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+              >
+                <Button
+                  size="sm"
+                  color="danger"
+                  variant="flat"
+                  isDisabled={selectedKeys === "all" ? false : (selectedKeys instanceof Set ? selectedKeys.size === 0 : true)}
+                  onPress={batchDeleteModal.onOpen}
+                  className="h-10 px-4 rounded-lg font-bold"
+                  startContent={<FaTrash />}
+                >
+                  批量删除
+                </Button>
+              </Badge>
+            </>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -730,6 +766,82 @@ export default function Applications() {
               </div>
             </div>
 
+            {/* 投票区域 - 仅评论员可见 */}
+            {role === 'commenter' && selectedApp?.status === 'pending' && (
+              <div className="mt-6 p-4 bg-default-50 rounded-xl border border-divider">
+                <div className="flex items-center gap-2 font-bold mb-4">
+                  <FaCommentDots className="text-primary" />
+                  <span>提交审核意见 (投票)</span>
+                </div>
+                <div className="flex flex-col gap-4">
+                  <div className="flex gap-4">
+                    <Button
+                      className={`flex-grow font-bold ${myVote.opinion === 'agree' ? 'bg-success text-white' : 'bg-default-200'}`}
+                      onPress={() => setMyVote({...myVote, opinion: 'agree'})}
+                      startContent={<FaThumbsUp />}
+                    >
+                      赞成
+                    </Button>
+                    <Button
+                      className={`flex-grow font-bold ${myVote.opinion === 'reject' ? 'bg-danger text-white' : 'bg-default-200'}`}
+                      onPress={() => setMyVote({...myVote, opinion: 'reject'})}
+                      startContent={<FaThumbsDown />}
+                    >
+                      反对
+                    </Button>
+                  </div>
+                  <Textarea
+                    placeholder="请输入投票备注 (可选)"
+                    value={myVote.comment}
+                    onValueChange={(val) => setMyVote({...myVote, comment: val})}
+                    size="sm"
+                  />
+                  <Button 
+                    color="primary" 
+                    onPress={handleVote} 
+                    isLoading={voting}
+                    isDisabled={votes.some(v => v.voterId === adminUser.id)}
+                  >
+                    {votes.some(v => v.voterId === adminUser.id) ? "您已投票" : "提交投票"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {votes.length > 0 && (
+              <div className="mt-6">
+                <div className="flex items-center gap-2 font-bold mb-3">
+                  <FaHistory className="text-primary" />
+                  <span>审核员投票 ({votes.length})</span>
+                </div>
+                <div className="space-y-3">
+                  {votes.map((vote) => (
+                    <div key={vote.id} className="flex items-start gap-3 p-3 rounded-lg bg-default-50 border border-divider">
+                      <Avatar size="sm" name={vote.voterUsername} />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-semibold text-sm">{vote.voterUsername}</span>
+                          <Chip
+                            size="sm"
+                            color={vote.opinion === 'agree' ? 'success' : 'danger'}
+                            variant="flat"
+                            startContent={vote.opinion === 'agree' ? <FaThumbsUp size={10} /> : <FaThumbsDown size={10} />}
+                          >
+                            {vote.opinion === 'agree' ? '赞成' : '反对'}
+                          </Chip>
+                        </div>
+                        {vote.comment && (
+                          <p className="text-xs text-default-600 italic">"{vote.comment}"</p>
+                        ) || <p className="text-xs text-default-400 italic">无备注</p>}
+                        <div className="text-[10px] text-default-400 mt-1">
+                          {new Date(vote.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 历史申请记录 */}
             {applicationDetail && applicationDetail.history && applicationDetail.history.length > 0 && (
               <div className="space-y-3 pt-4 border-t border-divider">
@@ -800,114 +912,116 @@ export default function Applications() {
             )}
 
             {/* 审核区域 */}
-            <div className="space-y-4 pt-4 border-t border-divider">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-default-600">处理申请</p>
-                <div className="flex items-center gap-2">
-                  {selectedApp?.adminUsername && (
-                    <Chip size="sm" variant="flat" color="secondary" className="font-bold">
-                      审核员: {selectedApp.adminUsername}
-                    </Chip>
-                  )}
-                  {selectedApp?.status !== 'pending' && (
-                    <Chip 
-                      color={selectedApp?.status === 'approved' ? 'success' : 'danger'} 
-                      variant="flat"
-                      className="font-bold"
-                    >
-                      {selectedApp?.status === 'approved' ? '已批准' : '已拒绝'}
-                    </Chip>
-                  )}
-                </div>
-              </div>
-
-              {selectedApp?.status === 'pending' ? (
-                <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
-                  <div className="flex gap-4">
-                    <Button
-                      className={`flex-grow h-14 font-bold ${reviewStatus === 'approved' ? 'bg-primary text-white shadow-lg' : 'bg-default-100'}`}
-                      onPress={() => setReviewStatus('approved')}
-                      startContent={<FaCheck />}
-                      radius="lg"
-                    >
-                      批准申请
-                    </Button>
-                    <Button
-                      className={`flex-grow h-14 font-bold ${reviewStatus === 'rejected' ? 'bg-danger text-white shadow-lg' : 'bg-default-100'}`}
-                      onPress={() => setReviewStatus('rejected')}
-                      startContent={<FaTimes />}
-                      radius="lg"
-                    >
-                      拒绝申请
-                    </Button>
+            {role !== 'commenter' && (
+              <div className="space-y-4 pt-4 border-t border-divider">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-default-600">处理申请</p>
+                  <div className="flex items-center gap-2">
+                    {selectedApp?.adminUsername && (
+                      <Chip size="sm" variant="flat" color="secondary" className="font-bold">
+                        审核员: {selectedApp.adminUsername}
+                      </Chip>
+                    )}
+                    {selectedApp?.status !== 'pending' && (
+                      <Chip 
+                        color={selectedApp?.status === 'approved' ? 'success' : 'danger'} 
+                        variant="flat"
+                        className="font-bold"
+                      >
+                        {selectedApp?.status === 'approved' ? '已批准' : '已拒绝'}
+                      </Chip>
+                    )}
                   </div>
+                </div>
 
-                  {reviewStatus === 'approved' && (
-                    <Input
-                      label="邀请码"
-                      placeholder="输入要发放的邀请码"
-                      value={inviteCode}
-                      onValueChange={setInviteCode}
+                {selectedApp?.status === 'pending' ? (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="flex gap-4">
+                      <Button
+                        className={`flex-grow h-14 font-bold ${reviewStatus === 'approved' ? 'bg-primary text-white shadow-lg' : 'bg-default-100'}`}
+                        onPress={() => setReviewStatus('approved')}
+                        startContent={<FaCheck />}
+                        radius="lg"
+                      >
+                        批准申请
+                      </Button>
+                      <Button
+                        className={`flex-grow h-14 font-bold ${reviewStatus === 'rejected' ? 'bg-danger text-white shadow-lg' : 'bg-default-100'}`}
+                        onPress={() => setReviewStatus('rejected')}
+                        startContent={<FaTimes />}
+                        radius="lg"
+                      >
+                        拒绝申请
+                      </Button>
+                    </div>
+
+                    {reviewStatus === 'approved' && (
+                      <Input
+                        label="邀请码"
+                        placeholder="输入要发放的邀请码"
+                        value={inviteCode}
+                        onValueChange={setInviteCode}
+                        variant="bordered"
+                        radius="lg"
+                        size="lg"
+                        className="animate-in zoom-in-95 duration-200"
+                        classNames={{
+                          label: "font-bold text-primary",
+                          inputWrapper: "border-2 focus-within:border-primary h-14"
+                        }}
+                      />
+                    )}
+
+                    <Textarea
+                      label="审核意见"
+                      placeholder="将发送给申请人的说明（如：已通过、申请理由不足等）"
+                      description="💡 此内容将通过邮件发送给申请人，请礼貌用语。"
+                      value={reviewOpinion}
+                      onValueChange={setReviewOpinion}
                       variant="bordered"
                       radius="lg"
-                      size="lg"
-                      className="animate-in zoom-in-95 duration-200"
+                      minRows={3}
                       classNames={{
                         label: "font-bold text-primary",
-                        inputWrapper: "border-2 focus-within:border-primary h-14"
+                        inputWrapper: "border-2",
+                        description: "text-primary/70 font-medium mt-1"
                       }}
                     />
-                  )}
 
-                  <Textarea
-                    label="审核意见"
-                    placeholder="将发送给申请人的说明（如：已通过、申请理由不足等）"
-                    description="💡 此内容将通过邮件发送给申请人，请礼貌用语。"
-                    value={reviewOpinion}
-                    onValueChange={setReviewOpinion}
-                    variant="bordered"
-                    radius="lg"
-                    minRows={3}
-                    classNames={{
-                      label: "font-bold text-primary",
-                      inputWrapper: "border-2",
-                      description: "text-primary/70 font-medium mt-1"
-                    }}
-                  />
-
-                  <Textarea
-                    label="审核备注"
-                    placeholder="仅审核员和管理可见的内部备注"
-                    description="🔒 此内容仅管理员可见，不会发送给申请人。"
-                    value={adminNote}
-                    onValueChange={setAdminNote}
-                    variant="bordered"
-                    radius="lg"
-                    minRows={2}
-                    classNames={{
-                      label: "font-bold",
-                      inputWrapper: "border-2",
-                      description: "text-default-400 mt-1"
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
-                    <p className="text-xs font-bold text-primary uppercase mb-2">审核意见 (已发送)</p>
-                    <p className="text-sm text-default-600 italic">
-                      {selectedApp?.reviewOpinion || '无意见信息'}
-                    </p>
+                    <Textarea
+                      label="审核备注"
+                      placeholder="仅审核员和管理可见的内部备注"
+                      description="🔒 此内容仅管理员可见，不会发送给申请人。"
+                      value={adminNote}
+                      onValueChange={setAdminNote}
+                      variant="bordered"
+                      radius="lg"
+                      minRows={2}
+                      classNames={{
+                        label: "font-bold",
+                        inputWrapper: "border-2",
+                        description: "text-default-400 mt-1"
+                      }}
+                    />
                   </div>
-                  <div className="p-4 bg-default-50 dark:bg-default-800/50 rounded-xl border border-divider">
-                    <p className="text-xs font-bold text-default-400 uppercase mb-2">审核备注 (内部)</p>
-                    <p className="text-sm text-default-600 italic">
-                      {selectedApp?.adminNote || '无备注信息'}
-                    </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                      <p className="text-xs font-bold text-primary uppercase mb-2">审核意见 (已发送)</p>
+                      <p className="text-sm text-default-600 italic">
+                        {selectedApp?.reviewOpinion || '无意见信息'}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-default-50 dark:bg-default-800/50 rounded-xl border border-divider">
+                      <p className="text-xs font-bold text-default-400 uppercase mb-2">审核备注 (内部)</p>
+                      <p className="text-sm text-default-600 italic">
+                        {selectedApp?.adminNote || '无备注信息'}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button
@@ -919,7 +1033,7 @@ export default function Applications() {
             >
               关闭
             </Button>
-            {selectedApp?.status === 'pending' && !applicationDetail?.readOnly && (
+            {role !== 'commenter' && selectedApp?.status === 'pending' && !applicationDetail?.readOnly && (
               <Button
                 color={reviewStatus === 'approved' ? 'primary' : 'danger'}
                 onPress={submitReview}

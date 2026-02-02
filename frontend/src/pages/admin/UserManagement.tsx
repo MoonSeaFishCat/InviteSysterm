@@ -22,6 +22,7 @@ import {
   CardBody,
   Divider,
   Avatar,
+  Checkbox,
 } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
@@ -53,9 +54,11 @@ export default function UserManagement() {
   const { isOpen: isDetailOpen, onOpen: onDetailOpen, onClose: onDetailClose } = useDisclosure();
   
   const [userDetail, setUserDetail] = useState<any>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchUsers();
+    setSelectedUserIds(new Set()); // 切换页面或筛选时清空选择
   }, [page, statusFilter]);
 
   const fetchUsers = async () => {
@@ -70,6 +73,62 @@ export default function UserManagement() {
       toast.error('获取用户列表失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedUserIds.size === 0) {
+      toast.error("请先选择要删除的用户");
+      return;
+    }
+    if (!confirm(`确定要批量删除这 ${selectedUserIds.size} 个用户吗？`)) return;
+    try {
+      const res = await api.post('/admin/all-users/batch-delete', {
+        userIds: Array.from(selectedUserIds)
+      });
+      toast.success(res.data.message || "批量删除成功");
+      setSelectedUserIds(new Set());
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "批量删除失败");
+    }
+  };
+
+  const handleBatchUpdateStatus = async (status: string) => {
+    if (selectedUserIds.size === 0) {
+      toast.error("请先选择要更新状态的用户");
+      return;
+    }
+    const actionText = status === 'active' ? '解封' : '封禁';
+    if (!confirm(`确定要批量${actionText}这 ${selectedUserIds.size} 个用户吗？`)) return;
+    try {
+      const res = await api.post('/admin/all-users/batch-status', {
+        userIds: Array.from(selectedUserIds),
+        status: status
+      });
+      toast.success(res.data.message || `批量${actionText}成功`);
+      setSelectedUserIds(new Set());
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || `批量${actionText}失败`);
+    }
+  };
+
+  const toggleSelectUser = (id: number) => {
+    const newSet = new Set(selectedUserIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedUserIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUserIds.size === users.length && users.length > 0) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(users.map(u => u.id)));
     }
   };
 
@@ -135,6 +194,42 @@ export default function UserManagement() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">用户管理</h1>
+        <div className="flex gap-2">
+          {selectedUserIds.size > 0 && (
+            <>
+              <Button
+                color="success"
+                variant="flat"
+                startContent={<FaCheck />}
+                onPress={() => handleBatchUpdateStatus('active')}
+                radius="lg"
+                className="font-bold shadow-md"
+              >
+                批量解封 ({selectedUserIds.size})
+              </Button>
+              <Button
+                color="warning"
+                variant="flat"
+                startContent={<FaBan />}
+                onPress={() => handleBatchUpdateStatus('banned')}
+                radius="lg"
+                className="font-bold shadow-md"
+              >
+                批量封禁 ({selectedUserIds.size})
+              </Button>
+              <Button
+                color="danger"
+                variant="flat"
+                startContent={<FaTrash />}
+                onPress={handleBatchDelete}
+                radius="lg"
+                className="font-bold shadow-md"
+              >
+                批量删除 ({selectedUserIds.size})
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-4 mb-6">
@@ -166,6 +261,13 @@ export default function UserManagement() {
 
       <Table aria-label="用户列表">
         <TableHeader>
+          <TableColumn>
+            <Checkbox
+              isSelected={selectedUserIds.size === users.length && users.length > 0}
+              onValueChange={toggleSelectAll}
+              size="sm"
+            />
+          </TableColumn>
           <TableColumn>ID</TableColumn>
           <TableColumn>邮箱</TableColumn>
           <TableColumn>昵称</TableColumn>
@@ -180,6 +282,13 @@ export default function UserManagement() {
         >
           {(user) => (
             <TableRow key={user.id}>
+              <TableCell>
+                <Checkbox
+                  isSelected={selectedUserIds.has(user.id)}
+                  onValueChange={() => toggleSelectUser(user.id)}
+                  size="sm"
+                />
+              </TableCell>
               <TableCell>{user.id}</TableCell>
               <TableCell>{user.email}</TableCell>
               <TableCell>{user.nickname}</TableCell>

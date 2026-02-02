@@ -40,6 +40,11 @@ func UserRegister(c *gin.Context) {
 	nickname, _ := data["nickname"].(string)
 	code, _ := data["code"].(string)
 
+	email = strings.TrimSpace(email)
+	password = strings.TrimSpace(password)
+	nickname = strings.TrimSpace(nickname)
+	code = strings.TrimSpace(code)
+
 	// 极验4.0 参数
 	lotNumber, _ := data["lot_number"].(string)
 	captchaOutput, _ := data["captcha_output"].(string)
@@ -176,6 +181,9 @@ func UserLogin(c *gin.Context) {
 
 	email, _ := data["email"].(string)
 	password, _ := data["password"].(string)
+
+	email = strings.TrimSpace(email)
+	password = strings.TrimSpace(password)
 
 	// 极验4.0 参数
 	lotNumber, _ := data["lot_number"].(string)
@@ -355,6 +363,9 @@ func ChangeUserPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
 		return
 	}
+
+	req.OldPassword = strings.TrimSpace(req.OldPassword)
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
 
 	if req.OldPassword == "" || req.NewPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请填写完整信息"})

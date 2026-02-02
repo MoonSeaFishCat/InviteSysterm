@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"invite-backend/database"
@@ -23,6 +24,8 @@ func RequestPasswordReset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请输入有效的邮箱地址"})
 		return
 	}
+
+	req.Email = strings.TrimSpace(req.Email)
 
 	// 检查用户是否存在
 	var userID int
@@ -48,7 +51,7 @@ func RequestPasswordReset(c *gin.Context) {
 
 	// 生成重置令牌（32字节随机字符串）
 	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
+	if _, randErr := rand.Read(tokenBytes); randErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "生成重置令牌失败"})
 		return
 	}
@@ -122,6 +125,9 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
+	req.Token = strings.TrimSpace(req.Token)
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
+
 	// 验证令牌
 	var email string
 	var expiresAt int64
@@ -156,4 +162,3 @@ func ResetPassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "密码重置成功，请使用新密码登录"})
 }
-

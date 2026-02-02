@@ -4,7 +4,7 @@ import Tickets from './Tickets';
 import Messages from './Messages';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, Button, Avatar, Divider, Chip } from "@heroui/react";
-import { FaUser, FaPaperPlane, FaTicketAlt, FaEnvelope, FaSignOutAlt, FaHome, FaBullhorn, FaTimes, FaMoon, FaSun } from 'react-icons/fa';
+import { FaUser, FaPaperPlane, FaTicketAlt, FaEnvelope, FaSignOutAlt, FaHome, FaBullhorn, FaTimes, FaMoon, FaSun, FaUserShield } from 'react-icons/fa';
 import Watermark from '../../components/Watermark';
 import { useState, useEffect } from 'react';
 import api from '../../api/client';
@@ -30,7 +30,7 @@ export default function UserDashboard() {
   const [dismissedAnnouncements, setDismissedAnnouncements] = useState<number[]>([]);
 
   const searchParams = new URLSearchParams(location.search);
-  const activeTab = (searchParams.get('tab') as 'profile' | 'applications' | 'tickets' | 'messages') || 'applications';
+  const activeTab = (searchParams.get('tab') as 'profile' | 'applications' | 'tickets' | 'messages' | 'chat') || 'applications';
 
   useEffect(() => {
     fetchAnnouncements();
@@ -62,11 +62,28 @@ export default function UserDashboard() {
     navigate('/');
   };
 
-  const menuItems = [
-    { key: 'applications', label: '申请管理', icon: FaPaperPlane, description: '管理邀请码申请' },
-    { key: 'tickets', label: '我的工单', icon: FaTicketAlt, description: '提交和查看工单' },
-    { key: 'messages', label: '站内信', icon: FaEnvelope, description: '查看系统消息' },
-    { key: 'profile', label: '个人设置', icon: FaUser, description: '修改个人信息' },
+  const menuGroups = [
+    {
+      label: '业务中心',
+      items: [
+        { key: 'applications', label: '申请管理', icon: FaPaperPlane, description: '管理邀请码申请' },
+        { key: 'tickets', label: '我的工单', icon: FaTicketAlt, description: '提交和查看工单' },
+      ]
+    },
+    {
+      label: '互动中心',
+      items: [
+        { key: 'messages', label: '站内信', icon: FaEnvelope, description: '查看系统消息' },
+        { key: 'global_chat', label: '交流空间', icon: FaBullhorn, description: '所有人可见' },
+        { key: 'chat', label: '私信管理员', icon: FaUserShield, description: '有问题找人工' },
+      ]
+    },
+    {
+      label: '账户设置',
+      items: [
+        { key: 'profile', label: '个人设置', icon: FaUser, description: '修改个人信息' },
+      ]
+    }
   ];
 
   // 过滤出未被关闭的活跃公告
@@ -162,30 +179,45 @@ export default function UserDashboard() {
 
                 <Divider className="my-2" />
 
-                {menuItems.map(item => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.key;
-                  return (
-                    <Button
-                      key={item.key}
-                      fullWidth
-                      variant={isActive ? 'flat' : 'light'}
-                      color={isActive ? 'primary' : 'default'}
-                      className="justify-start mb-1"
-                      startContent={<Icon />}
-                      onPress={() => navigate(`/user/center?tab=${item.key}`)}
-                    >
-                      <div className="flex flex-col items-start flex-1">
-                        <span className="font-medium">{item.label}</span>
-                        {!isActive && (
-                          <span className="text-xs text-default-400">{item.description}</span>
-                        )}
-                      </div>
-                    </Button>
-                  );
-                })}
+                {menuGroups.map((group, gIdx) => (
+                  <div key={group.label} className={gIdx > 0 ? "mt-4" : ""}>
+                    <p className="px-3 text-xs font-bold text-default-400 uppercase mb-2">
+                      {group.label}
+                    </p>
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.key;
+                      return (
+                        <Button
+                          key={item.key}
+                          fullWidth
+                          variant={isActive ? 'flat' : 'light'}
+                          color={isActive ? 'primary' : 'default'}
+                          className="justify-start mb-1"
+                          startContent={<Icon />}
+                          onPress={() => {
+                            if (item.key === 'chat') {
+                              navigate('/user/chat');
+                            } else if (item.key === 'global_chat') {
+                              navigate('/user/chat/global');
+                            } else {
+                              navigate(`/user/center?tab=${item.key}`);
+                            }
+                          }}
+                        >
+                          <div className="flex flex-col items-start flex-1">
+                            <span className="font-medium">{item.label}</span>
+                            {!isActive && (
+                              <span className="text-xs text-default-400">{item.description}</span>
+                            )}
+                          </div>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                ))}
 
-                <Divider className="my-2" />
+                <Divider className="my-4" />
 
                 <Button
                   fullWidth

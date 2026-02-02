@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Input, Button, Card, CardBody } from "@heroui/react";
+import { Input, Button, Card, CardBody, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
-import { FaLock, FaUser, FaShieldAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FaLock, FaUser, FaShieldAlt, FaExternalLinkAlt, FaExclamationTriangle } from 'react-icons/fa';
 import { StarMoonSecurity } from '../../utils/security';
 import { getDeviceId } from '../../utils/device';
 import { SiLinux } from 'react-icons/si';
@@ -15,10 +15,24 @@ export default function Login() {
   const [geetestEnabled, setGeetestEnabled] = useState(false);
   const [geetestId, setGeetestId] = useState('');
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     checkGeetestConfig();
-  }, []);
+    
+    // 检查是否有错误信息
+    const error = searchParams.get('error');
+    if (error) {
+      setErrorMsg(decodeURIComponent(error));
+      onOpen();
+      // 清除 URL 中的错误信息，避免刷新页面再次弹出
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('error');
+      setSearchParams(newParams);
+    }
+  }, [searchParams]);
 
   const checkGeetestConfig = async () => {
     try {
@@ -122,6 +136,42 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-950 dark:to-indigo-950 px-4 py-12">
       <div className="w-full max-w-md">
+        {/* 错误提示弹窗 */}
+        <Modal 
+          isOpen={isOpen} 
+          onOpenChange={onOpenChange}
+          backdrop="blur"
+          placement="center"
+          classNames={{
+            base: "border-[#f31260] border-t-4",
+            header: "border-b-[1px] border-default-100",
+            footer: "border-t-[1px] border-default-100",
+          }}
+        >
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-danger">
+                    <FaExclamationTriangle />
+                    <span>登录失败</span>
+                  </div>
+                </ModalHeader>
+                <ModalBody className="py-6">
+                  <p className="text-default-600 font-medium">
+                    {errorMsg}
+                  </p>
+                </ModalBody>
+                <ModalFooter>
+                  <Button color="danger" variant="light" onPress={onClose}>
+                    知道了
+                  </Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
+
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 shadow-2xl mb-4 animate-pulse">

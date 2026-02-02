@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"invite-backend/config"
@@ -148,7 +149,7 @@ func LinuxDoCallback(c *gin.Context) {
 	}
 
 	if userInfo.TrustLevel < minLevel {
-		c.String(http.StatusForbidden, fmt.Sprintf("权限不足：您的 Linux DO 信任等级需达到 %d 级以上才能登录管理后台", minLevel))
+		c.Redirect(http.StatusFound, fmt.Sprintf("/admin/login?error=%s", url.QueryEscape(fmt.Sprintf("权限不足：您的 Linux DO 信任等级（%d级）需达到 %d 级以上才能登录管理后台", userInfo.TrustLevel, minLevel))))
 		return
 	}
 
@@ -162,28 +163,28 @@ func LinuxDoCallback(c *gin.Context) {
 	if err != nil {
 		// 检查是否允许自动注册
 		if settings["allow_auto_admin_reg"] == "false" {
-			c.String(http.StatusForbidden, "系统已关闭自动注册，请联系超级管理员手动添加。")
+			c.Redirect(http.StatusFound, "/admin/login?error="+url.QueryEscape("系统已关闭自动注册，请联系超级管理员手动添加。"))
 			return
 		}
 
-		// 获取默认审核员权限
+		// 获取默认权限
 		defaultPermissions := settings["default_reviewer_permissions"]
 		if defaultPermissions == "" {
-			defaultPermissions = "applications,tickets,messages" // 默认权限
+			defaultPermissions = "messages" // 评论员默认只有消息权限
 		}
 
-		// 如果不存在，则创建（默认 role 为 reviewer）
+		// 如果不存在，则创建（默认 role 为 commenter）
 		now := time.Now().Unix()
 		var res sql.Result
 		res, err = database.DB.Exec(
-			"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?, ?)",
+			"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'commenter', ?, ?, ?, ?)",
 			userInfo.Username, linuxDoID, defaultPermissions, now, now,
 		)
 		if err != nil {
 			fmt.Printf("First insert failed: %v\n", err)
 			// 如果用户名冲突（可能已被其他管理员手动注册），则尝试加后缀
 			res, err = database.DB.Exec(
-				"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'reviewer', ?, ?, ?, ?)",
+				"INSERT INTO admins (username, password_hash, role, linuxdo_id, permissions, created_at, updated_at) VALUES (?, '', 'commenter', ?, ?, ?, ?)",
 				userInfo.Username+"_ld", linuxDoID, defaultPermissions, now, now,
 			)
 			if err != nil {
@@ -194,7 +195,7 @@ func LinuxDoCallback(c *gin.Context) {
 		}
 		newID, _ := res.LastInsertId()
 		id = int(newID)
-		role = "reviewer"
+		role = "commenter"
 		dbUsername = userInfo.Username
 	}
 
@@ -241,6 +242,9 @@ func AdminLogin(c *gin.Context) {
 
 	username, _ := data["username"].(string)
 	password, _ := data["password"].(string)
+
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
 
 	// 极验4.0 参数
 	lotNumber, _ := data["lot_number"].(string)
@@ -330,12 +334,14 @@ func AdminLogout(c *gin.Context) {
 func GetMe(c *gin.Context) {
 	username, _ := c.Get("admin_username")
 	role, _ := c.Get("admin_role")
+	permissions, _ := c.Get("admin_permissions")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"username": username,
-			"role":     role,
+			"username":    username,
+			"role":        role,
+			"permissions": permissions,
 		},
 	})
 }
@@ -352,6 +358,10 @@ func ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
 		return
 	}
+
+	req.CurrentPassword = strings.TrimSpace(req.CurrentPassword)
+	req.NewUsername = strings.TrimSpace(req.NewUsername)
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
 
 	if req.NewUsername == "" && req.NewPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "至少需要修改一项信息"})

@@ -40,6 +40,9 @@ func main() {
 	// 启动申请锁定管理器的清理协程
 	services.GetLockManager().StartCleanupRoutine()
 
+	// 启动指标检查器
+	services.StartQuotaChecker()
+
 	// 创建 Gin 引擎
 	r := gin.New() // 使用 New 而不是 Default，避免重复注册中间件
 	r.Use(gin.Logger(), gin.Recovery())
@@ -82,9 +85,6 @@ func main() {
 
 	// 公开 API 路由
 	api := r.Group("/api")
-	// 全局频率限制：每分钟最多 60 个请求
-	limiter := middleware.NewRateLimiter(60, time.Minute)
-	api.Use(limiter.Middleware())
 	{
 		// 统计信息
 		api.GET("/stats", handlers.GetPublicStats)
@@ -130,6 +130,13 @@ func main() {
 				userAuth.GET("/messages", handlers.GetUserMessages)
 				userAuth.POST("/messages/:id/read", handlers.ReadMessage)
 				userAuth.POST("/messages/read-all", handlers.ReadAllMessages)
+
+				// 聊天相关 (私信管理员 & 交流空间)
+				userAuth.GET("/chat/private", handlers.UserGetPrivateMessages)
+				userAuth.POST("/chat/private", handlers.UserSendPrivateMessage)
+				userAuth.GET("/chat/global", handlers.GetGlobalChatMessages)
+				userAuth.POST("/chat/global", handlers.UserSendGlobalChatMessage)
+				userAuth.GET("/admins", handlers.UserGetAdmins)
 			}
 		}
 
@@ -143,13 +150,9 @@ func main() {
 
 		// 管理员路由
 		admin := api.Group("/admin")
-		// 管理后台专用速率限制（更严格）
-		adminLimiter := middleware.NewRateLimiter(30, time.Minute)
-		admin.Use(adminLimiter.Middleware())
 		{
-			// 登录登出（额外的登录速率限制）
-			loginLimiter := middleware.NewRateLimiter(5, 5*time.Minute)
-			admin.POST("/login", loginLimiter.Middleware(), handlers.AdminLogin)
+			// 登录登出
+			admin.POST("/login", handlers.AdminLogin)
 			admin.POST("/logout", handlers.AdminLogout)
 
 			// Linux DO 登录
@@ -185,16 +188,36 @@ func main() {
 				authenticated.POST("/messages/batch-send", handlers.AdminBatchSendMessage)
 				authenticated.GET("/messages/history", handlers.AdminGetAllMessages)
 
-				// 管理员交流空间
-				authenticated.GET("/chat/messages", handlers.GetAdminChatMessages)
-				authenticated.POST("/chat/messages", handlers.SendAdminChatMessage)
+				// 管理员交流空间 (全局和私信)
+				authenticated.GET("/chat/global", handlers.GetGlobalChatMessages)
+				authenticated.POST("/chat/global", handlers.SendGlobalChatMessage)
+				authenticated.GET("/chat/private", handlers.GetPrivateMessages)
+				authenticated.POST("/chat/private", handlers.SendPrivateMessage)
+
+				// 审核员排行
+				authenticated.GET("/auditor/ranking", handlers.GetAuditorRanking)
+
+				// 审核员申请
+				authenticated.POST("/auditor/apply", handlers.ApplyForAuditor)
+
+				// 投票相关
+				authenticated.POST("/applications/:id/vote", handlers.VoteOnApplication)
+				authenticated.GET("/applications/:id/votes", handlers.GetApplicationVotes)
+
+				authenticated.GET("/settings", handlers.GetSettings)                   // 允许所有管理员读取配置（用于免审核逻辑判断）
+				authenticated.GET("/admins/kpi", handlers.GetAuditorKPI)               // 获取自己的 KPI 统计
+				authenticated.GET("/chat/pending", handlers.GetPendingPrivateMessages) // 获取待回复私信
+				authenticated.GET("/admins", handlers.GetAdmins)                       // 允许所有管理员获取管理员列表（用于私信）
 
 				// 只有超级管理员能访问的
 				super := authenticated.Group("", middleware.RoleMiddleware("super"))
 				{
-					super.GET("/settings", handlers.GetSettings)
 					super.POST("/settings/update", handlers.UpdateSettings)
 					super.GET("/audit-logs", handlers.GetAuditLogs)
+
+					// 审核员申请管理
+					super.GET("/auditor/applications", handlers.GetAuditorApplications)
+					super.POST("/auditor/process", handlers.ProcessAuditorApplication)
 
 					// 公告管理
 					super.GET("/announcements", handlers.GetAnnouncements)
@@ -203,11 +226,11 @@ func main() {
 					super.POST("/announcements/:id/toggle", handlers.ToggleAnnouncement)
 
 					// 管理员管理
-					super.GET("/admins", handlers.GetAdmins)
 					super.POST("/admins", handlers.AddAdmin)
 					super.DELETE("/admins/:id", handlers.DeleteAdmin)
 					super.PUT("/admins/:id", handlers.UpdateAdmin)
 					super.POST("/admins/batch-update-permissions", handlers.BatchUpdateAdminPermissions)
+					super.POST("/admins/batch-delete", handlers.AdminBatchDeleteAdmins)
 
 					// 用户管理
 					super.GET("/all-users", handlers.GetAllUsers)
@@ -215,6 +238,8 @@ func main() {
 					super.PUT("/all-users/:id/status", handlers.UpdateUserStatus)
 					super.DELETE("/all-users/:id", handlers.DeleteUser)
 					super.POST("/all-users/:id/reset-password", handlers.ResetUserPassword)
+					super.POST("/all-users/batch-delete", handlers.AdminBatchDeleteUsers)
+					super.POST("/all-users/batch-status", handlers.AdminBatchUpdateUserStatus)
 
 					// 黑名单管理
 					super.GET("/blacklist", handlers.GetBlacklist)
@@ -226,11 +251,11 @@ func main() {
 					super.DELETE("/applications/:id", handlers.DeleteApplication)
 
 					// 管理员聊天消息管理（仅超级管理员）
-					super.DELETE("/chat/messages/:id", handlers.DeleteAdminChatMessage)
-					super.PUT("/chat/messages/:id/pin", handlers.PinAdminChatMessage)
-					super.PUT("/chat/messages/:id/unpin", handlers.UnpinAdminChatMessage)
-					super.PUT("/chat/messages/:id/feature", handlers.FeatureAdminChatMessage)
-					super.PUT("/chat/messages/:id/unfeature", handlers.UnfeatureAdminChatMessage)
+					super.DELETE("/chat/messages/:id", handlers.DeleteChatMessage)
+					super.PUT("/chat/messages/:id/pin", handlers.PinChatMessage)
+					super.PUT("/chat/messages/:id/unpin", handlers.UnpinChatMessage)
+					super.PUT("/chat/messages/:id/feature", handlers.FeatureChatMessage)
+					super.PUT("/chat/messages/:id/unfeature", handlers.UnfeatureChatMessage)
 				}
 			}
 		}

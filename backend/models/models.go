@@ -47,14 +47,57 @@ type Setting struct {
 
 // Admin 管理员账号
 type Admin struct {
-	ID           int       `json:"id" db:"id"`
-	Username     string    `json:"username" db:"username"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Role         string    `json:"role" db:"role"` // super, reviewer
-	Permissions  string    `json:"permissions" db:"permissions"`
-	LinuxDoID    string    `json:"linuxdoId" db:"linuxdo_id"`
-	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+	ID           int        `json:"id" db:"id"`
+	Username     string     `json:"username" db:"username"`
+	PasswordHash string     `json:"-" db:"password_hash"`
+	Role         string     `json:"role" db:"role"` // super, reviewer, commenter
+	Permissions  string     `json:"permissions" db:"permissions"`
+	LinuxDoID    string     `json:"linuxdoId" db:"linuxdo_id"`
+	AuditCount   int        `json:"auditCount" db:"audit_count"`
+	LastAuditAt  *time.Time `json:"lastAuditAt" db:"last_audit_at"`
+	Status       string     `json:"status" db:"status"` // active, banned
+	CreatedAt    time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time  `json:"updatedAt" db:"updated_at"`
+}
+
+// ChatMessage 聊天消息
+type ChatMessage struct {
+	ID             int       `json:"id" db:"id"`
+	SenderID       int       `json:"senderId" db:"sender_id"`
+	SenderUsername string    `json:"senderUsername" db:"sender_username"`
+	SenderRole     string    `json:"senderRole" db:"sender_role"`
+	SenderType     string    `json:"senderType" db:"sender_type"` // admin, user
+	Content        string    `json:"message" db:"content"`        // 适配前端字段名 message
+	QuoteID        *int      `json:"quoteId" db:"quote_id"`
+	QuoteContent   string    `json:"quoteContent" db:"-"` // 辅助显示引用内容
+	IsPrivate      bool      `json:"isPrivate" db:"is_private"`
+	ReceiverID     *int      `json:"receiverId" db:"receiver_id"`
+	ReceiverType   string    `json:"receiverType" db:"receiver_type"` // admin, user
+	IsPinned       bool      `json:"isPinned" db:"is_pinned"`
+	IsFeatured     bool      `json:"isFeatured" db:"is_featured"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+}
+
+// ApplicationVote 申请投票
+type ApplicationVote struct {
+	ID            int       `json:"id" db:"id"`
+	ApplicationID int       `json:"applicationId" db:"application_id"`
+	VoterID       int       `json:"voterId" db:"voter_id"`
+	VoterUsername string    `json:"voterUsername" db:"voter_username"`
+	Opinion       string    `json:"opinion" db:"opinion"` // agree, reject
+	Comment       string    `json:"comment" db:"comment"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+}
+
+// AuditorApplication 审核员申请
+type AuditorApplication struct {
+	ID            int       `json:"id" db:"id"`
+	AdminID       int       `json:"adminId" db:"admin_id"`
+	AdminUsername string    `json:"adminUsername" db:"admin_username"`
+	Reason        string    `json:"reason" db:"reason"`
+	Status        string    `json:"status" db:"status"` // pending, approved, rejected
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	ProcessedBy   *int      `json:"processedBy" db:"processed_by"`
 }
 
 // SystemSettings 系统配置集合
@@ -71,6 +114,7 @@ type SystemSettings struct {
 	SMTPPass                 string `json:"smtp_pass"`
 	LinuxDoClientID          string `json:"linuxdo_client_id"`
 	LinuxDoClientSecret      string `json:"linuxdo_client_secret"`
+	WeeklyAuditQuota         string `json:"weekly_audit_quota"`
 }
 
 // Blacklist 黑名单

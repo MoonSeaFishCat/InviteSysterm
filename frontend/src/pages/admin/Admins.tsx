@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableHeader,
@@ -20,7 +21,7 @@ import {
   Tooltip,
   Checkbox
 } from "@heroui/react";
-import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock, FaCheckSquare } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock, FaCheckSquare, FaComments } from 'react-icons/fa';
 import { SiLinux } from 'react-icons/si';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
@@ -28,7 +29,7 @@ import toast from 'react-hot-toast';
 interface Admin {
   id: number;
   username: string;
-  role: 'super' | 'reviewer';
+  role: 'super' | 'reviewer' | 'commenter';
   permissions?: string;
   linuxdoId?: string;
   createdAt: string;
@@ -45,8 +46,10 @@ const PERMISSIONS = [
 ];
 
 export default function Admins() {
+  const navigate = useNavigate();
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [me, setMe] = useState<any>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { isOpen: isBatchOpen, onOpen: onBatchOpen, onOpenChange: onBatchOpenChange } = useDisclosure();
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
@@ -56,15 +59,24 @@ export default function Admins() {
   // Form states
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'super' | 'reviewer'>('reviewer');
+  const [role, setRole] = useState<'super' | 'reviewer' | 'commenter'>('commenter');
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
   const [batchPermissions, setBatchPermissions] = useState<Set<string>>(new Set());
+
+  const fetchMe = async () => {
+    try {
+      const res = await api.get('/admin/me');
+      if (res.data.success) {
+        setMe(res.data.data);
+      }
+    } catch (error) {}
+  };
 
   const fetchAdmins = async () => {
     setLoading(true);
     try {
       const res = await api.get('/admin/admins');
-      setAdmins(res.data);
+      setAdmins(res.data || []);
     } catch (error) {
       toast.error("加载管理员列表失败");
     } finally {
@@ -74,12 +86,13 @@ export default function Admins() {
 
   useEffect(() => {
     fetchAdmins();
+    fetchMe();
   }, []);
 
   const resetForm = () => {
     setUsername('');
     setPassword('');
-    setRole('reviewer');
+    setRole('commenter');
     setSelectedPermissions(new Set());
     setSelectedAdmin(null);
   };
@@ -183,6 +196,26 @@ export default function Admins() {
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (selectedAdminIds.size === 0) {
+      toast.error("请先选择要删除的管理员");
+      return;
+    }
+
+    if (!confirm(`确定要批量删除这 ${selectedAdminIds.size} 个管理员吗？`)) return;
+
+    try {
+      const res = await api.post('/admin/admins/batch-delete', {
+        adminIds: Array.from(selectedAdminIds)
+      });
+      toast.success(res.data.message || "批量删除成功");
+      setSelectedAdminIds(new Set());
+      fetchAdmins();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "批量删除失败");
+    }
+  };
+
   const toggleSelectAdmin = (id: number) => {
     const newSet = new Set(selectedAdminIds);
     if (newSet.has(id)) {
@@ -215,15 +248,27 @@ export default function Admins() {
         </h2>
         <div className="flex gap-2">
           {selectedAdminIds.size > 0 && (
-            <Button
-              color="secondary"
-              startContent={<FaCheckSquare />}
-              onPress={handleBatchPermissionsOpen}
-              radius="lg"
-              className="font-bold shadow-md"
-            >
-              批量设置权限 ({selectedAdminIds.size})
-            </Button>
+            <>
+              <Button
+                color="secondary"
+                startContent={<FaCheckSquare />}
+                onPress={handleBatchPermissionsOpen}
+                radius="lg"
+                className="font-bold shadow-md"
+              >
+                批量设置权限 ({selectedAdminIds.size})
+              </Button>
+              <Button
+                color="danger"
+                variant="flat"
+                startContent={<FaTrash />}
+                onPress={handleBatchDelete}
+                radius="lg"
+                className="font-bold shadow-md"
+              >
+                批量删除 ({selectedAdminIds.size})
+              </Button>
+            </>
           )}
           <Button
             color="primary"
@@ -274,12 +319,12 @@ export default function Admins() {
               <TableCell className="font-medium">{admin.username}</TableCell>
               <TableCell>
                 <Chip
-                  color={admin.role === 'super' ? "danger" : "primary"}
+                  color={admin.role === 'super' ? "danger" : admin.role === 'reviewer' ? "primary" : "success"}
                   variant="flat"
                   size="sm"
                   className="font-bold"
                 >
-                  {admin.role === 'super' ? "超级管理员" : "审核员"}
+                  {admin.role === 'super' ? "超级管理员" : admin.role === 'reviewer' ? "审核员" : "评论员"}
                 </Chip>
               </TableCell>
               <TableCell>
@@ -309,6 +354,24 @@ export default function Admins() {
               <TableCell className="text-default-500">{formatDate(admin.createdAt)}</TableCell>
               <TableCell>
                 <div className="flex justify-center gap-2">
+                  {me?.id !== admin.id && (
+                    <Tooltip content="发送私信">
+                      <Button 
+                        isIconOnly 
+                        size="sm" 
+                        variant="light" 
+                        onPress={() => navigate('/admin/dashboard/chat', { 
+                          state: { 
+                            receiverId: admin.id, 
+                            receiverType: 'admin',
+                            chatType: 'private'
+                          } 
+                        })}
+                      >
+                        <FaComments className="text-default-400 hover:text-primary transition-colors" />
+                      </Button>
+                    </Tooltip>
+                  )}
                   <Tooltip content="编辑">
                     <Button 
                       isIconOnly 
@@ -377,6 +440,7 @@ export default function Admins() {
                 >
                   <SelectItem key="super" textValue="超级管理员">超级管理员</SelectItem>
                   <SelectItem key="reviewer" textValue="审核员">审核员</SelectItem>
+                  <SelectItem key="commenter" textValue="评论员">评论员</SelectItem>
                 </Select>
 
                 {role === 'reviewer' && (

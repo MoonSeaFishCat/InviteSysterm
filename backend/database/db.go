@@ -41,6 +41,80 @@ func InitDB(dbPath string) error {
 	}
 
 	log.Println("Database initialized successfully")
+	// 检查并添加 audit_count 字段到 admins 表
+	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN audit_count INTEGER DEFAULT 0"); err != nil {
+		log.Printf("Note: ALTER TABLE admins audit_count: %v\n", err)
+	}
+	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN last_audit_at INTEGER"); err != nil {
+		log.Printf("Note: ALTER TABLE admins last_audit_at: %v\n", err)
+	}
+	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); err != nil {
+		log.Printf("Note: ALTER TABLE admins status: %v\n", err)
+	}
+
+	// 检查并添加 chat_messages 表
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			sender_id INTEGER NOT NULL,
+			sender_username TEXT NOT NULL,
+			sender_role TEXT NOT NULL,
+			sender_type TEXT NOT NULL DEFAULT 'admin',
+			content TEXT NOT NULL,
+			quote_id INTEGER REFERENCES chat_messages(id),
+			is_private INTEGER NOT NULL DEFAULT 0,
+			receiver_id INTEGER,
+			receiver_type TEXT,
+			is_pinned INTEGER NOT NULL DEFAULT 0,
+			is_featured INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+		)
+	`)
+	if err != nil {
+		log.Printf("Failed to create chat_messages table: %v\n", err)
+	}
+
+	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'admin'"); err != nil {
+		log.Printf("Note: ALTER TABLE chat_messages sender_type: %v\n", err)
+	}
+	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_type TEXT"); err != nil {
+		log.Printf("Note: ALTER TABLE chat_messages receiver_type: %v\n", err)
+	}
+	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN is_featured INTEGER NOT NULL DEFAULT 0"); err != nil {
+		log.Printf("Note: ALTER TABLE chat_messages is_featured: %v\n", err)
+	}
+	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_id INTEGER"); err != nil {
+		log.Printf("Note: ALTER TABLE chat_messages receiver_id: %v\n", err)
+	}
+
+	// 检查并添加 application_votes 表
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS application_votes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			application_id INTEGER NOT NULL REFERENCES applications(id),
+			voter_id INTEGER NOT NULL REFERENCES admins(id),
+			voter_username TEXT NOT NULL,
+			opinion TEXT NOT NULL,
+			comment TEXT,
+			created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+		)
+	`)
+
+	// 检查并添加 auditor_applications 表
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS auditor_applications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admin_id INTEGER NOT NULL REFERENCES admins(id),
+			reason TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+			processed_by INTEGER REFERENCES admins(id)
+		)
+	`)
+
+	// 检查并添加 weekly_audit_quota 设置
+	_, _ = DB.Exec("INSERT INTO settings (key, value, description, updated_at) VALUES ('weekly_audit_quota', '10', '审核员每周需要完成的审核数量', ?) ON CONFLICT(key) DO NOTHING", time.Now().Unix())
+
 	return nil
 }
 
@@ -206,12 +280,54 @@ func createTables() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL UNIQUE,
 		password_hash TEXT, -- 对于 Linux DO 用户，该字段可以为空
-		role TEXT NOT NULL DEFAULT 'reviewer', -- super, reviewer
+		role TEXT NOT NULL DEFAULT 'commenter', -- super, reviewer, commenter
 		permissions TEXT DEFAULT '', -- 权限列表，逗号分隔，例如 'applications,tickets,messages'
 		linuxdo_id TEXT UNIQUE, -- Linux DO 的用户 ID
+		audit_count INTEGER DEFAULT 0, -- 审核数量
+		last_audit_at INTEGER, -- 最后审核时间
+		status TEXT NOT NULL DEFAULT 'active', -- active, banned
 		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 		updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 	);
+
+	CREATE TABLE IF NOT EXISTS application_votes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		application_id INTEGER NOT NULL REFERENCES applications(id),
+		voter_id INTEGER NOT NULL REFERENCES admins(id),
+		voter_username TEXT NOT NULL,
+		opinion TEXT NOT NULL, -- agree, reject
+		comment TEXT,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS auditor_applications (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		admin_id INTEGER NOT NULL REFERENCES admins(id),
+		reason TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending', -- pending, approved, rejected
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		processed_by INTEGER REFERENCES admins(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS chat_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		sender_id INTEGER NOT NULL,
+		sender_username TEXT NOT NULL,
+		sender_role TEXT NOT NULL,
+		sender_type TEXT NOT NULL DEFAULT 'admin', -- admin, user
+		content TEXT NOT NULL,
+		quote_id INTEGER REFERENCES chat_messages(id),
+		is_private INTEGER NOT NULL DEFAULT 0, -- 0: global, 1: private
+		receiver_id INTEGER, -- if is_private is 1
+		receiver_type TEXT, -- admin, user
+		is_pinned INTEGER NOT NULL DEFAULT 0,
+		is_featured INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_chat_private ON chat_messages(is_private, receiver_id, sender_id);
+	CREATE INDEX IF NOT EXISTS idx_application_votes_app ON application_votes(application_id);
+	CREATE INDEX IF NOT EXISTS idx_auditor_apps_admin ON auditor_applications(admin_id);
 
 	CREATE INDEX IF NOT EXISTS idx_applications_email ON applications(email);
 	CREATE INDEX IF NOT EXISTS idx_applications_device ON applications(device_id);
@@ -330,6 +446,8 @@ func initDefaultSettings() error {
 		"geetest_key":                  "",
 		"geetest_enabled":              "false",
 		"reg_email_verify_enabled":     "true",
+		"auditor_no_review":            "false",
+		"weekly_audit_quota":           "10", // 每周最小审核量
 	}
 
 	for key, value := range defaultSettings {

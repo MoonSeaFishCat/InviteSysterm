@@ -171,6 +171,17 @@ export default function Settings() {
                 onValueChange={(val) => handleChange('require_audit', val ? 'true' : 'false')}
               />
             </div>
+            <div className="flex justify-between items-center p-4 bg-default-50 rounded-large border border-divider">
+              <div>
+                <p className="text-sm font-bold">审核员申请免审核</p>
+                <p className="text-tiny text-default-500">开启后，评论员申请成为审核员将自动通过</p>
+              </div>
+              <Switch 
+                color="primary"
+                isSelected={settings.auditor_no_review === 'true'} 
+                onValueChange={(val) => handleChange('auditor_no_review', val ? 'true' : 'false')}
+              />
+            </div>
             <Input
               label="网站名称"
               placeholder="例如: Invite System"
@@ -248,13 +259,27 @@ export default function Settings() {
               }}
             />
             <Input
-              label="单 IP 提交上限"
+              label="单 IP 申请上限"
               type="number"
               value={settings.max_applications_per_ip || '3'}
               onValueChange={(val) => handleChange('max_applications_per_ip', val)}
               variant="bordered"
               radius="lg"
               size="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <Input
+              label="审核员每周最小审核量"
+              type="number"
+              value={settings.weekly_audit_quota || '10'}
+              onValueChange={(val) => handleChange('weekly_audit_quota', val)}
+              variant="bordered"
+              radius="lg"
+              size="lg"
+              description="审核员每周必须完成的审核数量，未达标将被自动移除并拉黑"
               classNames={{
                 label: "font-bold text-default-500",
                 inputWrapper: "border-2"
