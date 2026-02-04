@@ -8,11 +8,14 @@ import {
 import {
   FaCheck, FaTimes, FaInfoCircle, FaSync, FaSearch, FaCopy, FaEnvelope,
   FaCalendarAlt, FaGlobe, FaFingerprint, FaTrash, FaHistory, FaClock,
-  FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaUserShield, FaFilter
+  FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaUserShield, FaFilter,
+  FaRobot, FaBrain, FaSearchPlus, FaChartBar
 } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 import { storage } from '../../utils/storage';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Application {
   id: number;
@@ -26,6 +29,15 @@ interface Application {
   adminNote?: string;
   reviewOpinion?: string;
   adminUsername?: string;
+  aigcScore?: number;
+  aigcConfidence?: string;
+  aigcEvidence?: string;
+  aigcAnalysis?: string;
+  aigcRelevance?: number;
+  aigcAuthenticity?: number;
+  aigcCompleteness?: number;
+  aigcExpression?: number;
+  aigcReply?: string;
 }
 
 interface ApplicationDetail {
@@ -59,6 +71,7 @@ export default function Applications() {
   const [votes, setVotes] = useState<ApplicationVote[]>([]);
   const [myVote, setMyVote] = useState<{opinion: string, comment: string}>({opinion: 'agree', comment: ''});
   const [voting, setVoting] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const {isOpen, onOpen, onClose} = useDisclosure();
   const deleteModal = useDisclosure();
@@ -94,6 +107,40 @@ export default function Applications() {
       toast.error(error.response?.data?.message || "投票失败");
     } finally {
       setVoting(false);
+    }
+  };
+
+  const handleAnalyzeAIGC = async () => {
+    if (!selectedApp) return;
+    setAnalyzing(true);
+    try {
+      const res = await api.post(`/admin/applications/${selectedApp.id}/analyze-aigc`);
+      if (res.data.success) {
+        toast.success("AI 分析完成");
+        // 更新详情中的数据
+        if (applicationDetail) {
+          setApplicationDetail({
+            ...applicationDetail,
+            application: {
+              ...applicationDetail.application,
+              ...res.data.data,
+              aigcScore: res.data.data.score,
+              aigcConfidence: res.data.data.confidence,
+              aigcEvidence: res.data.data.evidence,
+              aigcAnalysis: res.data.data.analysis,
+              aigcRelevance: res.data.data.relevance,
+              aigcAuthenticity: res.data.data.authenticity,
+              aigcCompleteness: res.data.data.completeness,
+              aigcExpression: res.data.data.expression,
+              aigcReply: res.data.data.reply
+            }
+          });
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "AI 分析失败");
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -774,6 +821,161 @@ export default function Applications() {
                   {selectedApp?.reason}
                 </p>
               </div>
+            </div>
+
+            {/* AIGC 分析区域 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FaRobot className="text-primary" />
+                  <p className="text-xs font-bold text-default-400 uppercase">AIGC 检测分析</p>
+                </div>
+                {!applicationDetail?.application.aigcAnalysis && (
+                  <Button 
+                    size="sm" 
+                    color="primary" 
+                    variant="flat"
+                    startContent={<FaBrain className="text-xs" />}
+                    onPress={handleAnalyzeAIGC}
+                    isLoading={analyzing}
+                    className="h-8 font-bold"
+                  >
+                    开始 AI 分析
+                  </Button>
+                )}
+              </div>
+
+              {applicationDetail?.application.aigcAnalysis ? (
+                <Card className="border-none bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 border border-indigo-500/20 shadow-md">
+                  <CardBody className="p-0">
+                    {/* 头部摘要栏 */}
+                    <div className="p-4 border-b border-indigo-500/10 bg-white/30 dark:bg-black/20 flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-6">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-default-400 uppercase tracking-wider">AI 生成概率</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-3xl font-black ${
+                              applicationDetail.application.aigcScore && applicationDetail.application.aigcScore > 55 ? "text-danger" : 
+                              applicationDetail.application.aigcScore && applicationDetail.application.aigcScore > 30 ? "text-warning" : "text-success"
+                            }`}>
+                              {applicationDetail.application.aigcScore}%
+                            </span>
+                            {applicationDetail.application.aigcScore && applicationDetail.application.aigcScore > 55 && (
+                              <Chip size="sm" color="danger" variant="shadow" className="font-bold animate-pulse">
+                                建议驳回
+                              </Chip>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-10 w-px bg-divider mx-2 hidden md:block" />
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-default-400 uppercase tracking-wider">置信度</span>
+                          <Chip size="sm" variant="flat" color="secondary" className="font-bold mt-1">
+                            {applicationDetail.application.aigcConfidence}
+                          </Chip>
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        size="sm" 
+                        variant="light" 
+                        color="primary"
+                        isIconOnly
+                        onPress={handleAnalyzeAIGC}
+                        isLoading={analyzing}
+                        className="rounded-full hover:bg-primary/10"
+                      >
+                        <FaSync size={14} className={analyzing ? "animate-spin" : ""} />
+                      </Button>
+                    </div>
+
+                    {/* 多维度评分网格 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4">
+                      {[
+                        { label: '相关性', value: applicationDetail.application.aigcRelevance, color: 'primary' },
+                        { label: '真实性', value: applicationDetail.application.aigcAuthenticity, color: 'success' },
+                        { label: '完整性', value: applicationDetail.application.aigcCompleteness, color: 'warning' },
+                        { label: '表达力', value: applicationDetail.application.aigcExpression, color: 'secondary' },
+                      ].map((item) => (
+                        <div key={item.label} className="bg-white/40 dark:bg-black/10 p-3 rounded-xl border border-white/50 dark:border-white/5">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-xs font-bold text-default-500">{item.label}</span>
+                            <span className="text-xs font-black text-default-700">{item.value}/100</span>
+                          </div>
+                          <Progress 
+                            value={item.value} 
+                            color={item.color as any}
+                            size="sm"
+                            radius="full"
+                            className="h-1.5"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 详细内容区 */}
+                    <div className="p-4 pt-0 space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 px-1">
+                            <FaSearchPlus size={12} />
+                            <span>检测证据与异常点</span>
+                          </div>
+                          <div className="p-3 bg-white/50 dark:bg-black/20 rounded-xl text-xs leading-relaxed border border-indigo-500/10 min-h-[80px]">
+                            {applicationDetail.application.aigcEvidence}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 px-1">
+                            <FaChartBar size={12} />
+                            <span>综合判定结论</span>
+                          </div>
+                          <div className="p-3 bg-white/50 dark:bg-black/20 rounded-xl text-xs leading-relaxed border border-purple-500/10 min-h-[80px]">
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {applicationDetail.application.aigcAnalysis || ""}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 参考回复 */}
+                      {applicationDetail.application.aigcReply && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-pink-600 dark:text-pink-400">
+                              <FaRobot size={12} />
+                              <span>建议参考回复</span>
+                            </div>
+                            <Button 
+                              size="sm" 
+                              variant="light" 
+                              color="danger" 
+                              className="h-6 text-[10px] min-w-0 px-2 font-bold"
+                              onPress={() => {
+                                setReviewOpinion(applicationDetail.application.aigcReply || "");
+                                toast.success("已填入审核意见");
+                              }}
+                            >
+                              使用此回复
+                            </Button>
+                          </div>
+                          <div className="p-3 bg-pink-500/5 dark:bg-pink-500/10 rounded-xl text-xs leading-relaxed border border-pink-500/10 italic text-default-600">
+                            {applicationDetail.application.aigcReply}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              ) : (
+                <div className="p-6 border-2 border-dashed border-divider rounded-xl flex flex-col items-center justify-center gap-2 text-default-400 bg-default-50/50">
+                  <FaRobot size={24} className="opacity-20" />
+                  <p className="text-[10px] font-medium">尚未进行 AIGC 生成概率分析</p>
+                </div>
+              )}
             </div>
 
             {/* 投票区域 - 所有人可见 */}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Input, Button, Card, CardBody, CardHeader, Divider, Switch, Spinner, Textarea, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure
 } from "@heroui/react";
-import { FaSave, FaCog, FaEnvelope, FaShieldAlt, FaKey, FaLinux } from 'react-icons/fa';
+import { FaSave, FaCog, FaEnvelope, FaShieldAlt, FaKey, FaLinux, FaRobot } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
@@ -421,6 +421,68 @@ export default function Settings() {
                 onValueChange={(val) => handleChange('smtp_from_name', val)}
                 variant="bordered"
                 radius="lg"
+                classNames={{
+                  label: "font-bold text-default-500",
+                  inputWrapper: "border-2"
+                }}
+              />
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="shadow-sm border border-divider md:col-span-2">
+          <CardHeader className="flex gap-3 px-6 py-4">
+            <FaRobot className="text-danger" size={20} />
+            <p className="font-bold text-lg">AIGC 检测配置 (LLM)</p>
+          </CardHeader>
+          <Divider />
+          <CardBody className="grid grid-cols-1 md:grid-cols-2 gap-6 px-6 py-6">
+            <Input
+              label="API Key"
+              placeholder="LLM API 密钥 (如 sk-...)"
+              type="password"
+              value={settings.llm_api_key || ''}
+              onValueChange={(val) => handleChange('llm_api_key', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <Input
+              label="Base URL"
+              placeholder="API 基础地址 (如 https://api.openai.com/v1)"
+              value={settings.llm_base_url || ''}
+              onValueChange={(val) => handleChange('llm_base_url', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <Input
+              label="Model"
+              placeholder="模型名称 (如 gpt-4o)"
+              value={settings.llm_model || ''}
+              onValueChange={(val) => handleChange('llm_model', val)}
+              variant="bordered"
+              radius="lg"
+              classNames={{
+                label: "font-bold text-default-500",
+                inputWrapper: "border-2"
+              }}
+            />
+            <div className="md:col-span-2">
+              <Textarea
+                label="系统提示词 (System Prompt)"
+                placeholder="用于 AIGC 检测的系统提示词"
+                value={settings.llm_system_prompt || ''}
+                onValueChange={(val) => handleChange('llm_system_prompt', val)}
+                variant="bordered"
+                radius="lg"
+                minRows={10}
                 classNames={{
                   label: "font-bold text-default-500",
                   inputWrapper: "border-2"

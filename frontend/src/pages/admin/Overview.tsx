@@ -195,6 +195,15 @@ export default function Overview() {
       bgGradient: "from-green-500 to-emerald-500",
       tab: "users",
       description: "平台总用户数"
+    },
+    {
+      title: "累计申请量",
+      value: stats?.total_apps || 0,
+      icon: <FaPaperPlane />,
+      color: "secondary",
+      bgGradient: "from-purple-500 to-pink-500",
+      tab: "applications",
+      description: "历史申请总数"
     }
   ];
 
@@ -308,9 +317,9 @@ export default function Overview() {
                 {kpi.remaining > 0 ? `，还需完成 ${kpi.remaining} 份申请审核。` : '，感谢您的辛勤工作！'}
               </p>
               {!kpi.is_met && role === 'reviewer' && (
-                <p className="text-xs text-danger-500 mt-1 font-medium flex items-center gap-1">
+                <p className="text-xs text-warning-600 mt-1 font-medium flex items-center gap-1">
                   <FaExclamationTriangle size={10} />
-                  注意：若本周结束时未达到最小审核量（{kpi.quota}），系统将自动回收权限并拉黑。
+                  提示：建议在本周结束前达到最小审核量（{kpi.quota}）以维持活跃度。
                 </p>
               )}
             </div>

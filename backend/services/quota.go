@@ -42,7 +42,6 @@ func CheckWeeklyQuota() {
 	}
 	defer rows.Close()
 
-	now := time.Now().Unix()
 	sevenDaysAgo := time.Now().AddDate(0, 0, -7).Unix()
 
 	for rows.Next() {
@@ -72,24 +71,8 @@ func CheckWeeklyQuota() {
 		}
 
 		if count < quota {
-			log.Printf("Admin %s failed to meet quota (%d/%d). Demoting and banning.\n", username, count, quota)
-
-			// 移除权限并拉黑
-			_, err = database.DB.Exec(
-				"UPDATE admins SET role = 'commenter', status = 'banned', updated_at = ? WHERE id = ?",
-				now, id,
-			)
-			if err != nil {
-				log.Printf("Failed to demote admin %s: %v\n", username, err)
-			}
-
-			// 如果有 Linux DO ID，也加入黑名单
-			if linuxdoID != nil && *linuxdoID != "" {
-				_, _ = database.DB.Exec(
-					"INSERT INTO blacklist (type, value, reason, created_at, updated_at) VALUES ('linuxdo_id', ?, ?, ?, ?)",
-					*linuxdoID, "审核指标未达标 (7天内审核量: "+strconv.Itoa(count)+", 要求: "+strconv.Itoa(quota)+")", now, now,
-				)
-			}
+			log.Printf("Admin %s failed to meet quota (%d/%d). Demotion and banning is disabled.\n", username, count, quota)
+			// 用户请求移除自动拉黑机制，仅保留日志记录或后续可能的提示
 		}
 	}
 }

@@ -4,19 +4,28 @@ import "time"
 
 // Application 申请记录
 type Application struct {
-	ID            int       `json:"id" db:"id"`
-	Email         string    `json:"email" db:"email"`
-	UserNickname  string    `json:"userNickname" db:"user_nickname"`
-	Reason        string    `json:"reason" db:"reason"`
-	Status        string    `json:"status" db:"status"` // pending, approved, rejected
-	DeviceID      string    `json:"deviceId" db:"device_id"`
-	IP            string    `json:"ip" db:"ip"`
-	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
-	AdminNote     string    `json:"adminNote" db:"admin_note"`
-	ReviewOpinion string    `json:"reviewOpinion" db:"review_opinion"`
-	ProcessedBy   *int      `json:"processedBy" db:"processed_by"`
-	AdminUsername string    `json:"adminUsername" db:"admin_username"`
+	ID               int       `json:"id" db:"id"`
+	Email            string    `json:"email" db:"email"`
+	UserNickname     string    `json:"userNickname" db:"user_nickname"`
+	Reason           string    `json:"reason" db:"reason"`
+	Status           string    `json:"status" db:"status"` // pending, approved, rejected
+	DeviceID         string    `json:"deviceId" db:"device_id"`
+	IP               string    `json:"ip" db:"ip"`
+	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time `json:"updatedAt" db:"updated_at"`
+	AdminNote        string    `json:"adminNote" db:"admin_note"`
+	ReviewOpinion    string    `json:"reviewOpinion" db:"review_opinion"`
+	ProcessedBy      *int      `json:"processedBy" db:"processed_by"`
+	AdminUsername    string    `json:"adminUsername" db:"admin_username"`
+	AigcScore        int       `json:"aigcScore" db:"aigc_score"`               // -1: 未检测, 0-100: AI 概率
+	AigcConfidence   string    `json:"aigcConfidence" db:"aigc_confidence"`     // 极高, 高, 中, 低, 极低
+	AigcEvidence     string    `json:"aigcEvidence" db:"aigc_evidence"`         // 关键证据
+	AigcAnalysis     string    `json:"aigcAnalysis" db:"aigc_analysis"`         // 完整分析
+	AigcRelevance    int       `json:"aigcRelevance" db:"aigc_relevance"`       // 相关性
+	AigcAuthenticity int       `json:"aigcAuthenticity" db:"aigc_authenticity"` // 真实性
+	AigcCompleteness int       `json:"aigcCompleteness" db:"aigc_completeness"` // 完整性
+	AigcExpression   int       `json:"aigcExpression" db:"aigc_expression"`     // 表达能力
+	AigcReply        string    `json:"aigcReply" db:"aigc_reply"`               // 参考回复
 }
 
 // VerificationCode 验证码

@@ -15,6 +15,9 @@ type Config struct {
 	AdminPassword string
 	AdminUsername string
 	FrontendURL   string
+	LLMAPIKey     string
+	LLMBaseURL    string
+	LLMModel      string
 }
 
 var AppConfig *Config
@@ -32,6 +35,9 @@ func LoadConfig() {
 		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:5173"),
+		LLMAPIKey:     getEnv("LLM_API_KEY", ""),
+		LLMBaseURL:    getEnv("LLM_BASE_URL", "https://api.openai.com/v1"),
+		LLMModel:      getEnv("LLM_MODEL", "gpt-4o"),
 	}
 
 	log.Printf("Config loaded: Port=%s, DBPath=%s, Mode=%s, AdminUsername=%s, FrontendURL=%s\n", AppConfig.Port, AppConfig.DBPath, AppConfig.GinMode, AppConfig.AdminUsername, AppConfig.FrontendURL)

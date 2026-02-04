@@ -163,6 +163,7 @@ func main() {
 				authenticated.GET("/stats", handlers.AdminGetStats)
 				authenticated.GET("/applications", handlers.GetApplications)
 				authenticated.GET("/applications/:id", handlers.GetApplicationDetail)
+				authenticated.POST("/applications/:id/analyze-aigc", handlers.AnalyzeApplicationAIGC)
 				authenticated.POST("/applications/:id/unlock", handlers.UnlockApplication)
 				authenticated.POST("/applications/:id/refresh-lock", handlers.RefreshLock)
 				authenticated.POST("/review", handlers.ReviewApplication)

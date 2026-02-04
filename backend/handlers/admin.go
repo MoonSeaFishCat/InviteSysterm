@@ -62,7 +62,9 @@ func GetApplications(c *gin.Context) {
 		SELECT
 			a.id, a.email, COALESCE(u.nickname, '') as user_nickname, a.reason, a.status, a.device_id, a.ip,
 			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
-			a.processed_by, ad.username as admin_username ` + baseQuery + `
+			a.processed_by, ad.username as admin_username,
+			COALESCE(a.aigc_score, -1), COALESCE(a.aigc_confidence, ''), COALESCE(a.aigc_evidence, ''), COALESCE(a.aigc_analysis, ''),
+			COALESCE(a.aigc_relevance, 0), COALESCE(a.aigc_authenticity, 0), COALESCE(a.aigc_completeness, 0), COALESCE(a.aigc_expression, 0), COALESCE(a.aigc_reply, '') ` + baseQuery + `
 		ORDER BY a.created_at DESC
 		LIMIT ? OFFSET ?`
 
@@ -87,6 +89,8 @@ func GetApplications(c *gin.Context) {
 			&app.ID, &app.Email, &app.UserNickname, &app.Reason, &app.Status,
 			&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
 			&processedBy, &adminUsername,
+			&app.AigcScore, &app.AigcConfidence, &app.AigcEvidence, &app.AigcAnalysis,
+			&app.AigcRelevance, &app.AigcAuthenticity, &app.AigcCompleteness, &app.AigcExpression, &app.AigcReply,
 		)
 		if err != nil {
 			log.Printf("Scan error: %v", err)
@@ -200,7 +204,9 @@ func GetApplicationDetail(c *gin.Context) {
 		SELECT
 			a.id, a.email, COALESCE(u.nickname, '') as user_nickname, a.reason, a.status, a.device_id, a.ip,
 			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
-			a.processed_by, ad.username as admin_username
+			a.processed_by, ad.username as admin_username,
+			COALESCE(a.aigc_score, -1), COALESCE(a.aigc_confidence, ''), COALESCE(a.aigc_evidence, ''), COALESCE(a.aigc_analysis, ''),
+			COALESCE(a.aigc_relevance, 0), COALESCE(a.aigc_authenticity, 0), COALESCE(a.aigc_completeness, 0), COALESCE(a.aigc_expression, 0), COALESCE(a.aigc_reply, '')
 		FROM applications a
 		LEFT JOIN users u ON a.user_id = u.id
 		LEFT JOIN admins ad ON a.processed_by = ad.id
@@ -209,6 +215,8 @@ func GetApplicationDetail(c *gin.Context) {
 		&app.ID, &app.Email, &app.UserNickname, &app.Reason, &app.Status,
 		&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
 		&processedBy, &adminUsername,
+		&app.AigcScore, &app.AigcConfidence, &app.AigcEvidence, &app.AigcAnalysis,
+		&app.AigcRelevance, &app.AigcAuthenticity, &app.AigcCompleteness, &app.AigcExpression, &app.AigcReply,
 	)
 
 	if err != nil {
@@ -401,6 +409,17 @@ func ReviewApplication(c *gin.Context) {
 		return
 	}
 
+	// 记录审计日志
+	adminUsername, _ := c.Get("admin_username")
+	auditDetails := req.Data.Note
+	if req.Data.Opinion != "" {
+		if auditDetails != "" {
+			auditDetails += " | 意见: " + req.Data.Opinion
+		} else {
+			auditDetails = "意见: " + req.Data.Opinion
+		}
+	}
+
 	// 开始事务
 	tx, err := database.DB.Begin()
 	if err != nil {
@@ -430,6 +449,16 @@ func ReviewApplication(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新管理员统计失败"})
 		return
+	}
+
+	// 记录审计日志（移动到事务内）
+	_, err = tx.Exec(
+		"INSERT INTO audit_logs (admin_id, admin_username, action, application_id, target_email, details) VALUES (?, ?, ?, ?, ?, ?)",
+		adminID, adminUsername, req.Status, req.AppID, email, auditDetails,
+	)
+	if err != nil {
+		log.Printf("Failed to insert audit log: %v", err)
+		// 即使日志记录失败，也不一定回滚审核操作，但最好记录下来
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -467,21 +496,6 @@ func ReviewApplication(c *gin.Context) {
 			}
 		}(int(userID.Int64), req.Status, req.Data.Opinion)
 	}
-
-	// 记录审计日志
-	adminUsername, _ := c.Get("admin_username")
-	auditDetails := req.Data.Note
-	if req.Data.Opinion != "" {
-		if auditDetails != "" {
-			auditDetails += " | 意见: " + req.Data.Opinion
-		} else {
-			auditDetails = "意见: " + req.Data.Opinion
-		}
-	}
-	_, _ = database.DB.Exec(
-		"INSERT INTO audit_logs (admin_id, admin_username, action, application_id, target_email, details) VALUES (?, ?, ?, ?, ?, ?)",
-		adminID, adminUsername, req.Status, req.AppID, email, auditDetails,
-	)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "处理成功"})
 }
@@ -733,6 +747,53 @@ func AdminGetUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": users})
 }
 
+// AnalyzeApplicationAIGC 分析申请理由的 AIGC 可能性
+func AnalyzeApplicationAIGC(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的申请ID"})
+		return
+	}
+
+	// 获取申请内容
+	var reason string
+	err = database.DB.QueryRow("SELECT reason FROM applications WHERE id = ?", id).Scan(&reason)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
+		return
+	}
+
+	// 调用 AI 分析服务
+	result, err := services.AnalyzeAIGC(reason)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "AI 分析失败: " + err.Error()})
+		return
+	}
+
+	// 更新数据库
+	_, err = database.DB.Exec(`
+		UPDATE applications 
+		SET aigc_score = ?, aigc_confidence = ?, aigc_evidence = ?, aigc_analysis = ?, 
+		    aigc_relevance = ?, aigc_authenticity = ?, aigc_completeness = ?, aigc_expression = ?, aigc_reply = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, result.Score, result.Confidence, result.Evidence, result.Analysis,
+		result.Relevance, result.Authenticity, result.Completeness, result.Expression, result.Reply,
+		time.Now().Unix(), id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新分析结果失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "分析完成",
+		"data":    result,
+	})
+}
+
 // GetAuditLogs 获取审计日志
 func GetAuditLogs(c *gin.Context) {
 	rows, err := database.DB.Query(`
@@ -749,23 +810,25 @@ func GetAuditLogs(c *gin.Context) {
 
 	var logs []map[string]interface{}
 	for rows.Next() {
-		var id, adminID, appID int
-		var adminUsername, action, targetEmail, details string
+		var id int
+		var adminID, appID sql.NullInt64
+		var adminUsername, action, targetEmail, details sql.NullString
 		var createdAtVal interface{}
 
 		err := rows.Scan(&id, &adminID, &adminUsername, &action, &appID, &targetEmail, &details, &createdAtVal)
 		if err != nil {
+			log.Printf("Error scanning audit log row: %v", err)
 			continue
 		}
 
 		logs = append(logs, map[string]interface{}{
 			"id":             id,
-			"admin_id":       adminID,
-			"admin_username": adminUsername,
-			"action":         action,
-			"application_id": appID,
-			"target_email":   targetEmail,
-			"details":        details,
+			"admin_id":       adminID.Int64,
+			"admin_username": adminUsername.String,
+			"action":         action.String,
+			"application_id": appID.Int64,
+			"target_email":   targetEmail.String,
+			"details":        details.String,
 			"created_at":     time.Unix(database.ToUnixTimestamp(createdAtVal), 0),
 		})
 	}
