@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableHeader,
@@ -46,10 +45,8 @@ const PERMISSIONS = [
 ];
 
 export default function Admins() {
-  const navigate = useNavigate();
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loading, setLoading] = useState(true);
-  const [me, setMe] = useState<any>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { isOpen: isBatchOpen, onOpen: onBatchOpen, onOpenChange: onBatchOpenChange } = useDisclosure();
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
@@ -62,15 +59,6 @@ export default function Admins() {
   const [role, setRole] = useState<'super' | 'reviewer' | 'commenter'>('commenter');
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
   const [batchPermissions, setBatchPermissions] = useState<Set<string>>(new Set());
-
-  const fetchMe = async () => {
-    try {
-      const res = await api.get('/admin/me');
-      if (res.data.success) {
-        setMe(res.data.data);
-      }
-    } catch (error) {}
-  };
 
   const fetchAdmins = async () => {
     setLoading(true);
@@ -86,7 +74,6 @@ export default function Admins() {
 
   useEffect(() => {
     fetchAdmins();
-    fetchMe();
   }, []);
 
   const resetForm = () => {
