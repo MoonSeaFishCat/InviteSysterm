@@ -15,7 +15,7 @@ import {
   DropdownMenu,
   DropdownItem
 } from "@heroui/react";
-import { FaPaperPlane, FaBullhorn, FaQuoteLeft, FaEllipsisV, FaReply, FaTrash, FaChevronLeft, FaUserShield, FaUserEdit, FaCommentDots } from 'react-icons/fa';
+import { FaPaperPlane, FaBullhorn, FaQuoteLeft, FaEllipsisV, FaReply, FaTrash, FaChevronLeft, FaUserShield, FaUserEdit } from 'react-icons/fa';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 import type { ChatMessage } from '../../types';
@@ -111,8 +111,8 @@ export default function GlobalChat() {
                 <FaBullhorn size={20} />
               </div>
               <div>
-                <h3 className="font-bold text-lg leading-tight">交流空间</h3>
-                <p className="text-xs text-white/70">所有人可见，请文明交流</p>
+                <h3 className="font-bold text-lg leading-tight">全局聊天室</h3>
+                <p className="text-xs text-white/70">全站所有人可见，请文明交流</p>
               </div>
             </div>
           </div>
@@ -139,33 +139,14 @@ export default function GlobalChat() {
               return (
                 <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   <div className={`flex gap-3 max-w-[80%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <Dropdown placement="bottom-start">
-                      <DropdownTrigger>
-                        <div className="cursor-pointer hover:opacity-80 transition-opacity">
-                          <Avatar
-                            size="sm"
-                            name={msg.senderUsername}
-                            icon={isAdmin ? <FaUserShield /> : <FaUserEdit />}
-                            className={isMe ? 'bg-primary' : isAdmin ? 'bg-secondary' : 'bg-default-300'}
-                          />
-                        </div>
-                      </DropdownTrigger>
-                      <DropdownMenu aria-label="头像操作">
-                        {isAdmin ? (
-                          <DropdownItem 
-                            key="private-chat" 
-                            startContent={<FaCommentDots className="text-primary" />}
-                            onPress={() => navigate('/user/chat', { state: { receiverId: msg.senderId, receiverUsername: msg.senderUsername } })}
-                          >
-                            私信管理员
-                          </DropdownItem>
-                        ) : (
-                          <DropdownItem key="info" textValue="用户信息">
-                            {msg.senderUsername}
-                          </DropdownItem>
-                        )}
-                      </DropdownMenu>
-                    </Dropdown>
+                    <div className="cursor-pointer hover:opacity-80 transition-opacity">
+                      <Avatar
+                        size="sm"
+                        name={msg.senderUsername}
+                        icon={isAdmin ? <FaUserShield /> : <FaUserEdit />}
+                        className={isMe ? 'bg-primary' : isAdmin ? 'bg-secondary' : 'bg-default-300'}
+                      />
+                    </div>
                     <div className="flex flex-col gap-1">
                       <div className={`flex items-center gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                         <span className="text-xs font-bold text-default-600">{msg.senderUsername}</span>

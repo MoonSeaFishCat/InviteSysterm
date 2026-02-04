@@ -21,7 +21,7 @@ import {
   Tooltip,
   Checkbox
 } from "@heroui/react";
-import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock, FaCheckSquare, FaComments } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaEdit, FaUserShield, FaUserEdit, FaLock, FaCheckSquare } from 'react-icons/fa';
 import { SiLinux } from 'react-icons/si';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
@@ -354,24 +354,6 @@ export default function Admins() {
               <TableCell className="text-default-500">{formatDate(admin.createdAt)}</TableCell>
               <TableCell>
                 <div className="flex justify-center gap-2">
-                  {me?.id !== admin.id && (
-                    <Tooltip content="发送私信">
-                      <Button 
-                        isIconOnly 
-                        size="sm" 
-                        variant="light" 
-                        onPress={() => navigate('/admin/dashboard/chat', { 
-                          state: { 
-                            receiverId: admin.id, 
-                            receiverType: 'admin',
-                            chatType: 'private'
-                          } 
-                        })}
-                      >
-                        <FaComments className="text-default-400 hover:text-primary transition-colors" />
-                      </Button>
-                    </Tooltip>
-                  )}
                   <Tooltip content="编辑">
                     <Button 
                       isIconOnly 

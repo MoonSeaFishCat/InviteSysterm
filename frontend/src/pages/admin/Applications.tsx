@@ -17,6 +17,7 @@ import { storage } from '../../utils/storage';
 interface Application {
   id: number;
   email: string;
+  userNickname: string;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
   deviceId: string;
@@ -331,26 +332,29 @@ export default function Applications() {
 
   const renderCell = (app: Application, columnKey: React.Key) => {
     switch (columnKey) {
-      case "email":
+      case "userNickname":
         return (
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
-              <p className="text-bold text-sm capitalize">{app.email}</p>
-              <Button 
-                size="sm" 
-                variant="light" 
-                color="primary"
-                isIconOnly 
-                className="h-6 w-6 min-w-6"
-                onPress={() => {
-                  navigator.clipboard.writeText(app.email);
-                  toast.success("邮箱已复制");
-                }}
-              >
-                <FaCopy className="text-[12px]" />
-              </Button>
+              <p className="text-bold text-sm capitalize">{app.userNickname || "未知用户"}</p>
+              {app.email && app.email !== '********' && (
+                <Button 
+                  size="sm" 
+                  variant="light" 
+                  color="primary"
+                  isIconOnly 
+                  className="h-6 w-6 min-w-6"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(app.email);
+                    toast.success("邮箱已复制");
+                  }}
+                >
+                  <FaCopy className="text-[12px]" />
+                </Button>
+              )}
             </div>
-            <p className="text-bold text-tiny text-default-400">{app.ip}</p>
+            {role === 'super' && <p className="text-bold text-tiny text-default-400">{app.email}</p>}
           </div>
         );
       case "reason":
@@ -634,7 +638,7 @@ export default function Applications() {
           }}
         >
           <TableHeader>
-            <TableColumn key="email">申请人</TableColumn>
+            <TableColumn key="userNickname">申请人</TableColumn>
             <TableColumn key="reason">理由</TableColumn>
             <TableColumn key="status">状态</TableColumn>
             <TableColumn key="createdAt">申请时间</TableColumn>
@@ -696,7 +700,7 @@ export default function Applications() {
                 </Chip>
               )}
             </div>
-            <p className="text-xs text-default-400 font-bold uppercase tracking-wider">ID: {selectedApp?.id} • {selectedApp?.email}</p>
+            <p className="text-xs text-default-400 font-bold uppercase tracking-wider">ID: {selectedApp?.id} • {selectedApp?.userNickname || "未知用户"}</p>
           </ModalHeader>
           <ModalBody className="gap-8">{applicationDetail?.readOnly && (
               <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl">
@@ -717,16 +721,18 @@ export default function Applications() {
               <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
                 <div className="flex items-center gap-2 text-default-400">
                   <FaEnvelope className="text-xs" />
-                  <p className="text-xs font-bold uppercase">申请人邮箱</p>
+                  <p className="text-xs font-bold uppercase">申请人用户名</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-default-700">{selectedApp?.email}</p>
-                  <Button size="sm" variant="light" isIconOnly className="h-6 w-6" onPress={() => {
-                    navigator.clipboard.writeText(selectedApp?.email || '');
-                    toast.success("邮箱已复制");
-                  }}>
-                    <FaCopy className="text-default-400 text-[10px]" />
-                  </Button>
+                  <p className="font-semibold text-default-700">{selectedApp?.userNickname || "未知用户"}</p>
+                  {selectedApp?.email && selectedApp.email !== '********' && (
+                    <Button size="sm" variant="light" isIconOnly className="h-6 w-6" onPress={() => {
+                      navigator.clipboard.writeText(selectedApp?.email || '');
+                      toast.success("邮箱已复制");
+                    }}>
+                      <FaCopy className="text-default-400 text-[10px]" />
+                    </Button>
+                  )}
                 </div>
               </div>
               <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
@@ -738,22 +744,26 @@ export default function Applications() {
                   {formatDate(selectedApp?.createdAt)}
                 </p>
               </div>
-              <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
-                <div className="flex items-center gap-2 text-default-400">
-                  <FaGlobe className="text-xs" />
-                  <p className="text-xs font-bold uppercase">IP 地址</p>
-                </div>
-                <p className="font-semibold text-default-700">{selectedApp?.ip}</p>
-              </div>
-              <div className="space-y-2 p-3 rounded-xl bg-default-50 dark:bg-default-100 border border-divider/50">
-                <div className="flex items-center gap-2 text-default-400">
-                  <FaFingerprint className="text-xs" />
-                  <p className="text-xs font-bold uppercase">设备指纹</p>
-                </div>
-                <p className="font-mono text-[10px] text-default-700 dark:text-default-600 break-all bg-default-100 dark:bg-default-200 p-1.5 rounded-lg border border-divider/30">
-                  {selectedApp?.deviceId}
-                </p>
-              </div>
+              {role === 'super' && (
+                <>
+                  <div className="space-y-2 p-3 rounded-xl bg-default-50 border border-divider/50">
+                    <div className="flex items-center gap-2 text-default-400">
+                      <FaGlobe className="text-xs" />
+                      <p className="text-xs font-bold uppercase">IP 地址</p>
+                    </div>
+                    <p className="font-semibold text-default-700">{selectedApp?.ip}</p>
+                  </div>
+                  <div className="space-y-2 p-3 rounded-xl bg-default-50 dark:bg-default-100 border border-divider/50">
+                    <div className="flex items-center gap-2 text-default-400">
+                      <FaFingerprint className="text-xs" />
+                      <p className="text-xs font-bold uppercase">设备指纹</p>
+                    </div>
+                    <p className="font-mono text-[10px] text-default-700 dark:text-default-600 break-all bg-default-100 dark:bg-default-200 p-1.5 rounded-lg border border-divider/30">
+                      {selectedApp?.deviceId}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 申请理由 */}
@@ -766,8 +776,8 @@ export default function Applications() {
               </div>
             </div>
 
-            {/* 投票区域 - 仅评论员可见 */}
-            {role === 'commenter' && selectedApp?.status === 'pending' && (
+            {/* 投票区域 - 所有人可见 */}
+            {selectedApp?.status === 'pending' && (
               <div className="mt-6 p-4 bg-default-50 rounded-xl border border-divider">
                 <div className="flex items-center gap-2 font-bold mb-4">
                   <FaCommentDots className="text-primary" />
@@ -852,7 +862,7 @@ export default function Applications() {
                     {applicationDetail.history.length} 条
                   </Chip>
                 </div>
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                <div className="space-y-3 max-h-[600px] overflow-y-auto">
                   {applicationDetail.history.map((histApp) => (
                     <Card key={histApp.id} className="border border-divider">
                       <CardBody className="p-4">
@@ -882,25 +892,25 @@ export default function Applications() {
                         <div className="space-y-2">
                           <div className="p-3 bg-default-50 rounded-lg">
                             <p className="text-xs font-bold text-default-500 mb-1">申请理由：</p>
-                            <p className="text-sm text-default-700 line-clamp-2">{histApp.reason}</p>
+                            <p className="text-sm text-default-700 whitespace-pre-wrap">{histApp.reason}</p>
                           </div>
 
                           {histApp.reviewOpinion && (
                             <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
                               <p className="text-xs font-bold text-primary mb-1">审核意见：</p>
-                              <p className="text-sm text-default-700">{histApp.reviewOpinion}</p>
+                              <p className="text-sm text-default-700 whitespace-pre-wrap">{histApp.reviewOpinion}</p>
                             </div>
                           )}
 
                           {histApp.adminNote && (
                             <div className="p-3 bg-warning/5 rounded-lg border border-warning/20">
                               <p className="text-xs font-bold text-warning mb-1">内部备注：</p>
-                              <p className="text-sm text-default-700">{histApp.adminNote}</p>
+                              <p className="text-sm text-default-700 whitespace-pre-wrap">{histApp.adminNote}</p>
                             </div>
                           )}
 
                           <div className="flex gap-3 text-xs text-default-400 pt-1">
-                            <span>🌐 IP: {histApp.ip}</span>
+                            {role === 'super' && <span>🌐 IP: {histApp.ip}</span>}
                             {histApp.adminUsername && <span>👤 审核员: {histApp.adminUsername}</span>}
                           </div>
                         </div>

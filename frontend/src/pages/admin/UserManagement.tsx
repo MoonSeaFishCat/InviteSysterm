@@ -26,7 +26,7 @@ import {
 } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
-import { FaSearch, FaBan, FaCheck, FaTrash, FaKey, FaEye, FaUser, FaEnvelope, FaClock, FaShieldAlt, FaTicketAlt, FaFileAlt, FaComments } from 'react-icons/fa';
+import { FaSearch, FaBan, FaCheck, FaTrash, FaKey, FaEye, FaUser, FaEnvelope, FaClock, FaShieldAlt, FaTicketAlt, FaFileAlt } from 'react-icons/fa';
 
 interface User {
   id: number;
@@ -588,28 +588,6 @@ export default function UserManagement() {
                             </div>
                           </div>
                         ))}
-                      </div>
-                    </CardBody>
-                  </Card>
-                )}
-
-                {/* 站内信统计 */}
-                {userDetail.messages_count !== undefined && (
-                  <Card>
-                    <CardBody>
-                      <div className="flex items-center gap-2 mb-4">
-                        <FaComments className="text-primary" />
-                        <h3 className="text-lg font-bold">站内信统计</h3>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
-                          <p className="text-3xl font-bold text-primary">{userDetail.messages_count || 0}</p>
-                          <p className="text-sm text-gray-600 mt-1">总消息数</p>
-                        </div>
-                        <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
-                          <p className="text-3xl font-bold text-success">{userDetail.unread_messages_count || 0}</p>
-                          <p className="text-sm text-gray-600 mt-1">未读消息</p>
-                        </div>
                       </div>
                     </CardBody>
                   </Card>

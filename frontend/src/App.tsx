@@ -6,7 +6,6 @@ import Dashboard from './pages/admin/Dashboard';
 import UserLogin from './pages/UserLogin';
 import UserRegister from './pages/UserRegister';
 import UserDashboard from './pages/user/Dashboard';
-import UserChat from './pages/user/PrivateChat';
 import GlobalChat from './pages/user/GlobalChat';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -21,7 +20,6 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/user/center" element={<UserDashboard />} />
-        <Route path="/user/chat" element={<UserChat />} />
         <Route path="/user/chat/global" element={<GlobalChat />} />
         <Route path="/admin/login" element={<Login />} />
         <Route path="/admin/dashboard/*" element={<Dashboard />} />

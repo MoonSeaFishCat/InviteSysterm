@@ -195,15 +195,6 @@ export default function Overview() {
       bgGradient: "from-green-500 to-emerald-500",
       tab: "users",
       description: "平台总用户数"
-    },
-    {
-      title: "站内消息",
-      value: stats?.total_messages || 0,
-      icon: <FaEnvelope />,
-      color: "secondary",
-      bgGradient: "from-purple-500 to-pink-500",
-      tab: "messages",
-      description: "已发送通知"
     }
   ];
 

@@ -21,11 +21,10 @@ import {
   Select,
   SelectItem,
   Progress,
-  Input,
 } from "@heroui/react";
 import api from '../../api/client';
 import toast from 'react-hot-toast';
-import { FaPlus, FaClock, FaCheckCircle, FaTimesCircle, FaEye, FaHistory, FaCopy, FaLink } from 'react-icons/fa';
+import { FaPlus, FaClock, FaCheckCircle, FaTimesCircle, FaEye, FaHistory, FaEnvelope } from 'react-icons/fa';
 
 export default function Applications() {
   const [applications, setApplications] = useState<any[]>([]);
@@ -361,48 +360,36 @@ export default function Applications() {
                   </Card>
                 )}
 
-                {selectedApp.status === 'approved' && selectedApp.invitation_code && (
+                {selectedApp.status === 'approved' && (
                   <Card className="bg-success/10 border-2 border-success/20">
                     <CardHeader className="border-b border-success/20">
                       <div className="flex items-center gap-2">
                         <FaCheckCircle className="text-success" />
-                        <h3 className="font-bold text-success">🎉 您的邀请码</h3>
+                        <h3 className="font-bold text-success">🎉 申请已批准</h3>
                       </div>
                     </CardHeader>
                     <CardBody className="space-y-4">
-                      <div className="bg-white dark:bg-default-100 rounded-lg p-4 border border-success/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FaLink className="text-success flex-shrink-0" />
-                          <span className="text-xs text-default-500">注册链接（每个链接仅可使用一次）</span>
+                      <div className="bg-white dark:bg-default-100 rounded-lg p-4 border border-success/30 text-center">
+                        <div className="flex flex-col items-center gap-3 py-4">
+                          <div className="w-12 h-12 bg-success/20 rounded-full flex items-center justify-center">
+                            <FaEnvelope className="text-success text-xl" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="font-bold text-default-800">邀请码已发送</p>
+                            <p className="text-sm text-default-500">
+                              您的邀请码已发送至邮箱 <span className="font-mono text-primary">{selectedApp.email}</span>
+                            </p>
+                          </div>
+                          <p className="text-xs text-default-400 mt-2">
+                            请注意查收垃圾邮件，如长时间未收到请联系管理员
+                          </p>
                         </div>
-                        <Input
-                          value={selectedApp.invitation_code}
-                          readOnly
-                          classNames={{
-                            input: "text-sm font-mono",
-                            inputWrapper: "bg-default-50"
-                          }}
-                          endContent={
-                            <Button
-                              size="sm"
-                              color="success"
-                              variant="flat"
-                              startContent={<FaCopy />}
-                              onPress={() => {
-                                navigator.clipboard.writeText(selectedApp.invitation_code);
-                                toast.success('邀请链接已复制到剪贴板！');
-                              }}
-                            >
-                              复制
-                            </Button>
-                          }
-                        />
                       </div>
                       <div className="bg-warning/10 rounded-lg p-3 border border-warning/30">
                         <p className="text-xs text-warning-600 dark:text-warning-500 flex items-start gap-2">
-                          <span className="flex-shrink-0">⚠️</span>
+                          <span className="flex-shrink-0">🔒</span>
                           <span>
-                            <strong>重要提示：</strong>此链接仅可使用一次，请妥善保管。使用后链接将自动失效，无法再次使用。
+                            <strong>安全提示：</strong>平台不存储您的邀请码。为了您的安全，请务必妥善保管邮件中的邀请链接，不要泄露给他人。
                           </span>
                         </p>
                       </div>

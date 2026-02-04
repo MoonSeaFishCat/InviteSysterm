@@ -336,12 +336,11 @@ func CheckApplicationStatus(c *gin.Context) {
 		app.AdminNote = adminNote.String
 	}
 
-	// 如果已批准，获取邀请码
-	var inviteCode string
-	if app.Status == "approved" {
-		database.DB.QueryRow("SELECT code FROM invitation_codes WHERE application_id = ?", appID).Scan(&inviteCode)
-	}
-
+	// 如果已批准，返回脱敏后的状态
+	// 为了安全起见，不直接在公开查询接口返回完整邀请码
+	// 用户应登录后在个人中心查看，或通过邮件接收
+	isApproved := app.Status == "approved"
+	
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
@@ -350,7 +349,9 @@ func CheckApplicationStatus(c *gin.Context) {
 			"reason":     app.Reason,
 			"adminNote":  app.AdminNote,
 			"createdAt":  app.CreatedAt,
-			"inviteCode": inviteCode,
+			"isApproved": isApproved,
+			// 隐藏具体邀请码，仅告知已发放
+			"message":    "申请已通过，邀请码已发送至您的邮箱，请注意查收",
 		},
 	})
 }

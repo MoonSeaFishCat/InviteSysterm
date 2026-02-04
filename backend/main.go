@@ -126,17 +126,14 @@ func main() {
 				userAuth.GET("/tickets/:id/messages", handlers.GetTicketMessages)
 				userAuth.POST("/tickets/:id/reply", handlers.ReplyTicket)
 
-				// 站内信相关
+				// 交流空间 (全局)
+				userAuth.GET("/chat/global", handlers.GetGlobalChatMessages)
+				userAuth.POST("/chat/global", handlers.UserSendGlobalChatMessage)
+
+				// 站内信
 				userAuth.GET("/messages", handlers.GetUserMessages)
 				userAuth.POST("/messages/:id/read", handlers.ReadMessage)
 				userAuth.POST("/messages/read-all", handlers.ReadAllMessages)
-
-				// 聊天相关 (私信管理员 & 交流空间)
-				userAuth.GET("/chat/private", handlers.UserGetPrivateMessages)
-				userAuth.POST("/chat/private", handlers.UserSendPrivateMessage)
-				userAuth.GET("/chat/global", handlers.GetGlobalChatMessages)
-				userAuth.POST("/chat/global", handlers.UserSendGlobalChatMessage)
-				userAuth.GET("/admins", handlers.UserGetAdmins)
 			}
 		}
 
@@ -183,16 +180,9 @@ func main() {
 				authenticated.POST("/tickets/:id/reopen", handlers.AdminReopenTicket)
 				authenticated.DELETE("/tickets/:id", handlers.AdminDeleteTicket)
 
-				// 管理员站内信
-				authenticated.POST("/messages/send", handlers.AdminSendMessage)
-				authenticated.POST("/messages/batch-send", handlers.AdminBatchSendMessage)
-				authenticated.GET("/messages/history", handlers.AdminGetAllMessages)
-
-				// 管理员交流空间 (全局和私信)
+				// 管理员交流空间 (全局)
 				authenticated.GET("/chat/global", handlers.GetGlobalChatMessages)
 				authenticated.POST("/chat/global", handlers.SendGlobalChatMessage)
-				authenticated.GET("/chat/private", handlers.GetPrivateMessages)
-				authenticated.POST("/chat/private", handlers.SendPrivateMessage)
 
 				// 审核员排行
 				authenticated.GET("/auditor/ranking", handlers.GetAuditorRanking)
@@ -204,10 +194,14 @@ func main() {
 				authenticated.POST("/applications/:id/vote", handlers.VoteOnApplication)
 				authenticated.GET("/applications/:id/votes", handlers.GetApplicationVotes)
 
-				authenticated.GET("/settings", handlers.GetSettings)                   // 允许所有管理员读取配置（用于免审核逻辑判断）
-				authenticated.GET("/admins/kpi", handlers.GetAuditorKPI)               // 获取自己的 KPI 统计
-				authenticated.GET("/chat/pending", handlers.GetPendingPrivateMessages) // 获取待回复私信
-				authenticated.GET("/admins", handlers.GetAdmins)                       // 允许所有管理员获取管理员列表（用于私信）
+				authenticated.GET("/settings", handlers.GetSettings)     // 允许所有管理员读取配置（用于免审核逻辑判断）
+				authenticated.GET("/admins/kpi", handlers.GetAuditorKPI) // 获取自己的 KPI 统计
+				authenticated.GET("/admins", handlers.GetAdmins)         // 允许所有管理员获取管理员列表
+
+				// 管理员站内信
+				authenticated.POST("/messages/send", handlers.AdminSendMessage)
+				authenticated.POST("/messages/batch-send", handlers.AdminBatchSendMessage)
+				authenticated.GET("/messages/history", handlers.AdminGetAllMessages)
 
 				// 只有超级管理员能访问的
 				super := authenticated.Group("", middleware.RoleMiddleware("super"))

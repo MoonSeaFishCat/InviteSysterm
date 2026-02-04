@@ -91,29 +91,30 @@ func SubmitApplication(c *gin.Context) {
 		return
 	}
 
-	if settings["risk_control_enabled"] == "true" {
-		// 检查是否有未拒绝的申请
-		var count int
+	// 强制风控检查：无论系统风控开关是否开启，基础的重复性检查必须执行
+	// 检查是否有未拒绝的申请（通过邮箱、设备ID或用户ID）
+	var count int
+	database.DB.QueryRow(
+		"SELECT COUNT(*) FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved')",
+		email, req.Fingerprint, userID,
+	).Scan(&count)
+
+	if count > 0 {
+		var status string
 		database.DB.QueryRow(
-			"SELECT COUNT(*) FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved')",
+			"SELECT status FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved') LIMIT 1",
 			email, req.Fingerprint, userID,
-		).Scan(&count)
+		).Scan(&status)
 
-		if count > 0 {
-			var status string
-			database.DB.QueryRow(
-				"SELECT status FROM applications WHERE (email = ? OR device_id = ? OR user_id = ?) AND status IN ('pending', 'approved') LIMIT 1",
-				email, req.Fingerprint, userID,
-			).Scan(&status)
-
-			msg := "您已有正在处理中的申请，请耐心等待"
-			if status == "approved" {
-				msg = "您已申请成功，请查看邮件"
-			}
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": msg})
-			return
+		msg := "您已有正在处理中的申请，请耐心等待"
+		if status == "approved" {
+			msg = "您已申请成功，请在个人中心或邮件中查看邀请码"
 		}
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": msg})
+		return
+	}
 
+	if settings["risk_control_enabled"] == "true" {
 		// 检查同 IP 提交上限
 		var ipCount int
 		database.DB.QueryRow("SELECT COUNT(*) FROM applications WHERE ip = ? AND created_at > ?", ip, time.Now().Unix()-86400).Scan(&ipCount)
@@ -144,11 +145,10 @@ func GetUserApplications(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	rows, err := database.DB.Query(`
-		SELECT a.id, a.email, a.reason, a.status, a.review_opinion, a.created_at, a.updated_at, i.code
-		FROM applications a
-		LEFT JOIN invitation_codes i ON a.id = i.application_id
-		WHERE a.user_id = ? 
-		ORDER BY a.created_at DESC`,
+		SELECT id, email, reason, status, review_opinion, created_at, updated_at
+		FROM applications 
+		WHERE user_id = ? 
+		ORDER BY created_at DESC`,
 		userID,
 	)
 	if err != nil {
@@ -161,9 +161,9 @@ func GetUserApplications(c *gin.Context) {
 	for rows.Next() {
 		var id int
 		var email, reason, status string
-		var opinion, code sql.NullString
+		var opinion sql.NullString
 		var createdAt, updatedAt int64
-		err = rows.Scan(&id, &email, &reason, &status, &opinion, &createdAt, &updatedAt, &code)
+		err = rows.Scan(&id, &email, &reason, &status, &opinion, &createdAt, &updatedAt)
 		if err != nil {
 			continue
 		}
@@ -176,7 +176,7 @@ func GetUserApplications(c *gin.Context) {
 			"review_opinion":  opinion.String,
 			"created_at":      createdAt,
 			"updated_at":      updatedAt,
-			"invitation_code": code.String,
+			"invitation_code": "", // 平台不存储邀请码，引导查看邮件
 		}
 		apps = append(apps, app)
 	}

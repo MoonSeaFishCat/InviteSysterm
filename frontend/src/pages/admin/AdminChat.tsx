@@ -13,10 +13,7 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  DropdownSection,
-  Textarea,
-  Select,
-  SelectItem
+  Textarea
 } from "@heroui/react";
 import { 
   FaComments, 
@@ -41,37 +38,20 @@ export default function AdminChat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [quoteMessage, setQuoteMessage] = useState<ChatMessage | null>(null);
-  const [chatType, setChatType] = useState<'global' | 'private'>('global');
-  const [receiverId, setReceiverId] = useState<number | null>(null);
-  const [receiverType, setReceiverType] = useState<'admin' | 'user'>('admin');
+  const [chatType, setChatType] = useState<'global' | 'audit'>('global');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [admins, setAdmins] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [pendingMessages, setPendingMessages] = useState<any[]>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchPendingMessages = async () => {
-    try {
-      const res = await api.get('/admin/chat/pending');
-      if (res.data.success) {
-        setPendingMessages(res.data.data || []);
-      }
-    } catch (error) {
-      console.error("获取待回复私信失败", error);
-    }
-  };
-
   const fetchMessages = async () => {
     try {
-      const url = chatType === 'global' ? '/admin/chat/global' : '/admin/chat/private';
+      const url = '/admin/chat/global';
       const params: any = {};
-      if (chatType === 'private' && receiverId) {
-        params.receiver_id = receiverId;
-        params.receiver_type = receiverType;
+      if (chatType === 'audit') {
+        params.room = 'audit';
       }
       const res = await api.get(url, { params });
       if (res.data.success) {
@@ -88,26 +68,6 @@ export default function AdminChat() {
     }
   };
 
-  const fetchAdmins = async () => {
-    try {
-      const res = await api.get('/admin/admins');
-      setAdmins(res.data || []);
-    } catch (error) {
-      console.error("获取管理员列表失败", error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const res = await api.get('/admin/users');
-      if (res.data.success) {
-        setUsers(res.data.data || []);
-      }
-    } catch (error) {
-      console.error("获取用户列表失败", error);
-    }
-  };
-
   const fetchCurrentUser = async () => {
     try {
       const res = await api.get('/admin/me');
@@ -121,30 +81,23 @@ export default function AdminChat() {
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchAdmins();
-    fetchUsers();
-    fetchPendingMessages();
 
-    // 处理跳转过来的私信请求
+    // 处理跳转过来的请求
     if (location.state) {
-      const { receiverId, receiverType, chatType } = location.state;
-      if (receiverId) setReceiverId(receiverId);
-      if (receiverType) setReceiverType(receiverType);
+      const { chatType } = location.state;
       if (chatType) setChatType(chatType);
     }
   }, [location.state]);
 
   useEffect(() => {
     fetchMessages();
-    fetchPendingMessages();
     
     // 每10秒自动刷新消息
     const interval = setInterval(() => {
       fetchMessages();
-      fetchPendingMessages();
     }, 10000);
     return () => clearInterval(interval);
-  }, [chatType, receiverId]);
+  }, [chatType]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) {
@@ -159,12 +112,11 @@ export default function AdminChat() {
 
     setSending(true);
     try {
-      const url = chatType === 'global' ? '/admin/chat/global' : '/admin/chat/private';
+      const url = '/admin/chat/global';
       const data: any = { message: newMessage };
       if (quoteMessage) data.quote_id = quoteMessage.id;
-      if (chatType === 'private' && receiverId) {
-        data.receiver_id = receiverId;
-        data.receiver_type = receiverType;
+      if (chatType === 'audit') {
+        data.room = 'audit';
       }
 
       const res = await api.post(url, data);
@@ -238,8 +190,9 @@ export default function AdminChat() {
     <div className="flex flex-col gap-6 h-[calc(100vh-200px)]">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold flex items-center gap-2">
-          <FaComments className="text-primary" />
-          审核员交流空间
+          {chatType === 'global' ? <FaComments className="text-primary" /> : 
+           <FaUserShield className="text-success" />}
+          {chatType === 'global' ? '全站大厅' : '审核团队专属聊天室'}
         </h2>
         <div className="flex gap-2">
           <Button 
@@ -248,117 +201,23 @@ export default function AdminChat() {
             variant={chatType === 'global' ? 'solid' : 'flat'}
             onPress={() => setChatType('global')}
           >
-            全站广播
+            全局聊天室
           </Button>
           <Button 
             size="sm" 
-            color={chatType === 'private' ? 'primary' : 'default'}
-            variant={chatType === 'private' ? 'solid' : 'flat'}
-            onPress={() => setChatType('private')}
-            endContent={pendingMessages.length > 0 && (
-              <Chip size="sm" color="danger" variant="solid" className="min-w-[18px] h-[18px] p-0 text-[10px]">
-                {pendingMessages.length}
-              </Chip>
-            )}
+            color={chatType === 'audit' ? 'primary' : 'default'}
+            variant={chatType === 'audit' ? 'solid' : 'flat'}
+            onPress={() => setChatType('audit')}
+            startContent={<FaUserShield className="text-xs" />}
           >
-            私信消息
+            审核团队专属
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
-        {/* 左侧待回复列表 (仅在私信模式显示) */}
-        {chatType === 'private' && (
-          <div className="lg:col-span-1 flex flex-col gap-4 overflow-hidden h-full">
-            <Card className="shadow-sm border border-divider h-full">
-              <CardHeader className="flex flex-col items-start px-4 py-3 gap-1 bg-default-50">
-                <p className="text-sm font-bold flex items-center gap-2">
-                  <FaStar className="text-warning" />
-                  待回复私信
-                </p>
-                <p className="text-[10px] text-default-400">点击用户即可开始回复</p>
-              </CardHeader>
-              <Divider />
-              <CardBody className="p-0">
-                <ScrollShadow className="h-full">
-                  {pendingMessages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-default-400 p-4 text-center">
-                      <FaComments size={24} className="mb-2 opacity-20" />
-                      <p className="text-xs">暂无待回复私信</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col">
-                      {pendingMessages.map((msg) => (
-                        <div 
-                          key={msg.id}
-                          className={`p-3 border-b border-divider cursor-pointer hover:bg-default-100 transition-colors ${receiverId === msg.sender_id ? 'bg-primary-50' : ''}`}
-                          onClick={() => {
-                            setReceiverId(msg.sender_id);
-                            setReceiverType(msg.sender_type || 'user');
-                            setChatType('private');
-                          }}
-                        >
-                          <div className="flex justify-between items-start mb-1">
-                            <span className="text-xs font-bold truncate max-w-[100px]">{msg.sender_username}</span>
-                            <span className="text-[10px] text-default-400">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                          </div>
-                          <p className="text-xs text-default-500 truncate">{msg.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollShadow>
-              </CardBody>
-            </Card>
-          </div>
-        )}
-
         {/* 右侧聊天窗口 */}
-        <div className={chatType === 'private' ? "lg:col-span-3 flex flex-col gap-6 h-full overflow-hidden" : "lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden"}>
-          {chatType === 'private' && (
-            <Card className="shadow-sm border border-divider">
-              <CardBody className="flex flex-row gap-4 items-center p-3">
-                <div className="flex items-center gap-2 text-sm font-bold text-default-600 min-w-fit">
-                  <FaUsers className="text-primary" />
-                  当前会话:
-                </div>
-                <Select
-                  placeholder="搜索或选择私信对象"
-                  size="sm"
-                  className="max-w-xs"
-                  selectedKeys={receiverId ? [`${receiverType}-${receiverId}`] : []}
-                  onSelectionChange={(keys) => {
-                    const key = Array.from(keys)[0] as string;
-                    if (key) {
-                      const [type, id] = key.split('-');
-                      setReceiverId(Number(id));
-                      setReceiverType(type as 'admin' | 'user');
-                    }
-                  }}
-                >
-                  <DropdownSection title="管理员">
-                    {admins.filter(admin => admin.id !== currentUser?.id).map(admin => (
-                      <SelectItem key={`admin-${admin.id}`} textValue={admin.username} startContent={<Avatar name={admin.username} size="sm" className="w-5 h-5" />}>
-                        {admin.username}
-                      </SelectItem>
-                    ))}
-                  </DropdownSection>
-                  <DropdownSection title="普通用户">
-                    {users.map(user => (
-                      <SelectItem key={`user-${user.id}`} textValue={user.nickname || user.email} startContent={<Avatar name={user.nickname || user.email} size="sm" className="w-5 h-5" />}>
-                        {user.nickname || user.email}
-                      </SelectItem>
-                    ))}
-                  </DropdownSection>
-                </Select>
-                {receiverId && (
-                  <Button size="sm" variant="light" color="danger" isIconOnly onPress={() => setReceiverId(null)}>
-                    <FaTimes />
-                  </Button>
-                )}
-              </CardBody>
-            </Card>
-          )}
+        <div className="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
 
           <Card className="shadow-lg border-none flex-grow overflow-hidden flex flex-col">
             <CardHeader className="flex justify-between items-center px-6 py-4 bg-default-50/50">
@@ -367,11 +226,11 @@ export default function AdminChat() {
                   {chatType === 'global' ? <FaUsers size={20} /> : <FaComments size={20} />}
                 </div>
                 <div>
-                  <h3 className="font-bold">
-                    {chatType === 'global' ? '全站广播' : (receiverId ? `与 ${receiverType === 'admin' ? '管理员' : '用户'} 会话` : '选择一个会话开始聊天')}
+                  <h3 className="text-sm font-bold">
+                    {chatType === 'global' ? '全局聊天室' : '审核团队专属聊天室'}
                   </h3>
                   <p className="text-tiny text-default-400">
-                    {chatType === 'global' ? '所有管理员可见' : '仅对话双方可见'}
+                    {chatType === 'global' ? '全站所有人可见' : '仅管理员可见'}
                   </p>
                 </div>
               </div>
@@ -388,16 +247,9 @@ export default function AdminChat() {
             ) : (
               messages.map((msg) => {
                 // 在管理员端：
-                // 如果是私信模式：
-                // 1. 如果发送者是当前管理员，显示在右侧
-                // 2. 如果发送者是用户，显示在左侧
-                // 3. 如果发送者是其他管理员，显示在左侧
-                // 全局模式下维持原样（根据是否是当前用户决定）
-                const isCurrentUser = currentUser?.id === msg.senderId && msg.senderType === 'admin';
-                
-                const showOnRight = chatType === 'private' 
-                  ? isCurrentUser 
-                  : isCurrentUser;
+                // 全局模式下根据是否是当前用户决定显示在左侧还是右侧
+                const isCurrentUser = currentUser && Number(currentUser.id) === Number(msg.senderId) && msg.senderType === 'admin';
+                const showOnRight = isCurrentUser;
 
                 return (
                   <div
@@ -439,7 +291,7 @@ export default function AdminChat() {
                     <div className="bg-default-100 p-2 rounded-lg text-xs text-default-500 border-l-4 border-primary mb-1 italic max-w-full">
                       <div className="flex items-center gap-1 opacity-70 mb-1">
                         <FaQuoteRight size={8} />
-                        <span>引用自 {msg.senderUsername}</span>
+                        <span>引用自 {msg.quoteUsername || '未知用户'}</span>
                       </div>
                       <p className="truncate">{msg.quoteContent}</p>
                     </div>
@@ -531,7 +383,10 @@ export default function AdminChat() {
               <Textarea
                 value={newMessage}
                 onValueChange={setNewMessage}
-                placeholder={chatType === 'global' ? "发送全站广播..." : "发送私信..."}
+                placeholder={
+                  chatType === 'global' ? "发送全站广播（所有人可见）..." : 
+                  "发送审核团队内部消息..."
+                }
                 onKeyDown={handleKeyPress}
                 minRows={1}
                 maxRows={4}

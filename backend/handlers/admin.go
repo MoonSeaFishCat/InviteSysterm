@@ -34,6 +34,7 @@ func GetApplications(c *gin.Context) {
 	// 基础查询
 	baseQuery := `
 		FROM applications a
+		LEFT JOIN users u ON a.user_id = u.id
 		LEFT JOIN admins ad ON a.processed_by = ad.id
 		WHERE 1=1`
 	var args []interface{}
@@ -44,8 +45,8 @@ func GetApplications(c *gin.Context) {
 	}
 
 	if search != "" {
-		baseQuery += " AND (a.email LIKE ? OR a.reason LIKE ?)"
-		args = append(args, "%"+search+"%", "%"+search+"%")
+		baseQuery += " AND (a.email LIKE ? OR u.nickname LIKE ? OR a.reason LIKE ?)"
+		args = append(args, "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
 	// 获取总数
@@ -59,11 +60,13 @@ func GetApplications(c *gin.Context) {
 	// 获取分页数据
 	query := `
 		SELECT
-			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.id, a.email, COALESCE(u.nickname, '') as user_nickname, a.reason, a.status, a.device_id, a.ip,
 			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
 			a.processed_by, ad.username as admin_username ` + baseQuery + `
 		ORDER BY a.created_at DESC
 		LIMIT ? OFFSET ?`
+
+	adminRole, _ := c.Get("admin_role")
 
 	dataArgs := append(args, pageSize, (page-1)*pageSize)
 	rows, err := database.DB.Query(query, dataArgs...)
@@ -81,12 +84,20 @@ func GetApplications(c *gin.Context) {
 		var processedBy sql.NullInt64
 
 		err := rows.Scan(
-			&app.ID, &app.Email, &app.Reason, &app.Status,
+			&app.ID, &app.Email, &app.UserNickname, &app.Reason, &app.Status,
 			&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
 			&processedBy, &adminUsername,
 		)
 		if err != nil {
+			log.Printf("Scan error: %v", err)
 			continue
+		}
+
+		if adminRole != "super" {
+			app.IP = ""
+			app.DeviceID = ""
+			// 隐藏邮箱
+			app.Email = "********"
 		}
 
 		app.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
@@ -187,14 +198,15 @@ func GetApplicationDetail(c *gin.Context) {
 
 	err = database.DB.QueryRow(`
 		SELECT
-			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.id, a.email, COALESCE(u.nickname, '') as user_nickname, a.reason, a.status, a.device_id, a.ip,
 			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
 			a.processed_by, ad.username as admin_username
 		FROM applications a
+		LEFT JOIN users u ON a.user_id = u.id
 		LEFT JOIN admins ad ON a.processed_by = ad.id
 		WHERE a.id = ?
 	`, id).Scan(
-		&app.ID, &app.Email, &app.Reason, &app.Status,
+		&app.ID, &app.Email, &app.UserNickname, &app.Reason, &app.Status,
 		&app.DeviceID, &app.IP, &createdAtVal, &updatedAtVal, &adminNote, &reviewOpinion,
 		&processedBy, &adminUsername,
 	)
@@ -206,6 +218,13 @@ func GetApplicationDetail(c *gin.Context) {
 		}
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "申请不存在"})
 		return
+	}
+
+	if currentAdminRole != "super" {
+		app.IP = ""
+		app.DeviceID = ""
+		// 隐藏邮箱
+		app.Email = "********"
 	}
 
 	app.CreatedAt = time.Unix(database.ToUnixTimestamp(createdAtVal), 0)
@@ -227,14 +246,14 @@ func GetApplicationDetail(c *gin.Context) {
 	// 获取同一邮箱或设备的历史申请记录
 	historyQuery := `
 		SELECT
-			a.id, a.email, a.reason, a.status, a.device_id, a.ip,
+			a.id, a.email, COALESCE(u.nickname, '') as user_nickname, a.reason, a.status, a.device_id, a.ip,
 			a.created_at, a.updated_at, a.admin_note, a.review_opinion,
 			a.processed_by, ad.username as admin_username
 		FROM applications a
+		LEFT JOIN users u ON a.user_id = u.id
 		LEFT JOIN admins ad ON a.processed_by = ad.id
 		WHERE (a.email = ? OR a.device_id = ?) AND a.id != ?
 		ORDER BY a.created_at DESC
-		LIMIT 20
 	`
 
 	rows, err := database.DB.Query(historyQuery, app.Email, app.DeviceID, app.ID)
@@ -259,12 +278,19 @@ func GetApplicationDetail(c *gin.Context) {
 		var hProcessedBy sql.NullInt64
 
 		err = rows.Scan(
-			&histApp.ID, &histApp.Email, &histApp.Reason, &histApp.Status,
+			&histApp.ID, &histApp.Email, &histApp.UserNickname, &histApp.Reason, &histApp.Status,
 			&histApp.DeviceID, &histApp.IP, &hCreatedAtVal, &hUpdatedAtVal, &hAdminNote, &hReviewOpinion,
 			&hProcessedBy, &hAdminUsername,
 		)
 		if err != nil {
 			continue
+		}
+
+		if currentAdminRole != "super" {
+			histApp.IP = ""
+			histApp.DeviceID = ""
+			// 隐藏邮箱
+			histApp.Email = "********"
 		}
 
 		histApp.CreatedAt = time.Unix(database.ToUnixTimestamp(hCreatedAtVal), 0)
@@ -396,25 +422,6 @@ func ReviewApplication(c *gin.Context) {
 		return
 	}
 
-	// 如果批准，保存邀请码
-	if req.Status == "approved" && req.Data.Code != "" {
-		_, err = tx.Exec(
-			"INSERT INTO invitation_codes (code, application_id, created_at) VALUES (?, ?, ?)",
-			req.Data.Code, req.AppID, time.Now().Unix(),
-		)
-		if err != nil {
-			// 如果已存在（可能是重复点击），则更新
-			_, err = tx.Exec(
-				"UPDATE invitation_codes SET code = ? WHERE application_id = ?",
-				req.Data.Code, req.AppID,
-			)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存邀请码失败"})
-				return
-			}
-		}
-	}
-
 	// 更新管理员审核统计
 	_, err = tx.Exec(
 		"UPDATE admins SET audit_count = audit_count + 1, last_audit_at = ?, updated_at = ? WHERE id = ?",
@@ -438,6 +445,7 @@ func ReviewApplication(c *gin.Context) {
 		emailService, emailErr := services.GetEmailService()
 		if emailErr == nil {
 			if status == "approved" {
+				// 注意：此处 code 仅通过邮件发送，不存入数据库
 				emailService.SendApprovalEmail(targetEmail, code, opinion)
 			} else {
 				emailService.SendRejectionEmail(targetEmail, opinion)
@@ -1148,62 +1156,6 @@ func GetAuditorKPI(c *gin.Context) {
 			"is_met": count >= quota,
 		},
 	})
-}
-
-// GetPendingPrivateMessages 获取待回复的私信列表
-func GetPendingPrivateMessages(c *gin.Context) {
-	adminIDInterface, _ := c.Get("admin_id")
-	adminID, ok := adminIDInterface.(int)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未授权"})
-		return
-	}
-
-	// 查询所有发给当前管理员，且该用户没有收到当前管理员回复的最新私信
-	rows, err := database.DB.Query(`
-		SELECT m1.id, m1.sender_id, m1.sender_username, m1.sender_type, m1.content, m1.created_at
-		FROM chat_messages m1
-		WHERE m1.receiver_id = ? AND m1.receiver_type = 'admin'
-		AND m1.id = (
-			SELECT MAX(id) FROM chat_messages 
-			WHERE sender_id = m1.sender_id AND sender_type = m1.sender_type
-			AND receiver_id = ? AND receiver_type = 'admin'
-		)
-		AND NOT EXISTS (
-			SELECT 1 FROM chat_messages 
-			WHERE sender_id = ? AND sender_type = 'admin'
-			AND receiver_id = m1.sender_id AND receiver_type = m1.sender_type
-			AND id > m1.id
-		)
-		ORDER BY m1.created_at DESC
-	`, adminID, adminID, adminID)
-
-	if err != nil {
-		fmt.Printf("GetPendingPrivateMessages query error: %v\n", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取待回复私信失败: " + err.Error()})
-		return
-	}
-	defer rows.Close()
-
-	var messages []map[string]interface{}
-	for rows.Next() {
-		var id, senderID int
-		var senderUsername, senderType, message string
-		var createdAt int64
-		if err := rows.Scan(&id, &senderID, &senderUsername, &senderType, &message, &createdAt); err != nil {
-			continue
-		}
-		messages = append(messages, map[string]interface{}{
-			"id":              id,
-			"sender_id":       senderID,
-			"sender_username": senderUsername,
-			"sender_type":     senderType,
-			"message":         message,
-			"created_at":      createdAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": messages})
 }
 
 // BatchUpdateAdminPermissions 批量更新管理员权限

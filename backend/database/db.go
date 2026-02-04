@@ -42,14 +42,14 @@ func InitDB(dbPath string) error {
 
 	log.Println("Database initialized successfully")
 	// 检查并添加 audit_count 字段到 admins 表
-	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN audit_count INTEGER DEFAULT 0"); err != nil {
-		log.Printf("Note: ALTER TABLE admins audit_count: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE admins ADD COLUMN audit_count INTEGER DEFAULT 0"); execErr != nil {
+		log.Printf("Note: ALTER TABLE admins audit_count: %v\n", execErr)
 	}
-	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN last_audit_at INTEGER"); err != nil {
-		log.Printf("Note: ALTER TABLE admins last_audit_at: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE admins ADD COLUMN last_audit_at INTEGER"); execErr != nil {
+		log.Printf("Note: ALTER TABLE admins last_audit_at: %v\n", execErr)
 	}
-	if _, err := DB.Exec("ALTER TABLE admins ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); err != nil {
-		log.Printf("Note: ALTER TABLE admins status: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE admins ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); execErr != nil {
+		log.Printf("Note: ALTER TABLE admins status: %v\n", execErr)
 	}
 
 	// 检查并添加 chat_messages 表
@@ -74,17 +74,20 @@ func InitDB(dbPath string) error {
 		log.Printf("Failed to create chat_messages table: %v\n", err)
 	}
 
-	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'admin'"); err != nil {
-		log.Printf("Note: ALTER TABLE chat_messages sender_type: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE chat_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'admin'"); execErr != nil {
+		log.Printf("Note: ALTER TABLE chat_messages sender_type: %v\n", execErr)
 	}
-	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_type TEXT"); err != nil {
-		log.Printf("Note: ALTER TABLE chat_messages receiver_type: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_type TEXT"); execErr != nil {
+		log.Printf("Note: ALTER TABLE chat_messages receiver_type: %v\n", execErr)
 	}
-	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN is_featured INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Printf("Note: ALTER TABLE chat_messages is_featured: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE chat_messages ADD COLUMN is_featured INTEGER NOT NULL DEFAULT 0"); execErr != nil {
+		log.Printf("Note: ALTER TABLE chat_messages is_featured: %v\n", execErr)
 	}
-	if _, err := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_id INTEGER"); err != nil {
-		log.Printf("Note: ALTER TABLE chat_messages receiver_id: %v\n", err)
+	if _, execErr := DB.Exec("ALTER TABLE chat_messages ADD COLUMN receiver_id INTEGER"); execErr != nil {
+		log.Printf("Note: ALTER TABLE chat_messages receiver_id: %v\n", execErr)
+	}
+	if _, execErr := DB.Exec("ALTER TABLE chat_messages ADD COLUMN room TEXT"); execErr != nil {
+		log.Printf("Note: ALTER TABLE chat_messages room: %v\n", execErr)
 	}
 
 	// 检查并添加 application_votes 表
@@ -252,14 +255,6 @@ func createTables() error {
 		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 	);
 
-	CREATE TABLE IF NOT EXISTS invitation_codes (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		code TEXT NOT NULL UNIQUE,
-		is_used INTEGER NOT NULL DEFAULT 0,
-		application_id INTEGER REFERENCES applications(id),
-		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-	);
-
 	CREATE TABLE IF NOT EXISTS settings (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		key TEXT NOT NULL UNIQUE,
@@ -322,6 +317,7 @@ func createTables() error {
 		receiver_type TEXT, -- admin, user
 		is_pinned INTEGER NOT NULL DEFAULT 0,
 		is_featured INTEGER NOT NULL DEFAULT 0,
+		room TEXT,
 		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 	);
 

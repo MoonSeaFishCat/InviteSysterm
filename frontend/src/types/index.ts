@@ -46,6 +46,7 @@ export interface ChatMessage {
   message: string;
   quoteId?: number;
   quoteContent?: string;
+  quoteUsername?: string;
   isPinned: boolean;
   isFeatured: boolean;
   createdAt: string;

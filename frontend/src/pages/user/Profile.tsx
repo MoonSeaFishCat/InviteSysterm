@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardBody, Input, Button, Divider, Avatar, Chip } from "@heroui/react";
 import { FaSave, FaUser, FaEnvelope, FaCalendar, FaKey, FaShieldAlt } from 'react-icons/fa';
 import apiClient from '../../api/client';
+import toast from 'react-hot-toast';
+import { StarMoonSecurity } from '../../utils/security';
+import { getDeviceId } from '../../utils/device';
 
 export default function Profile() {
   const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
@@ -39,15 +42,24 @@ export default function Profile() {
     }
 
     try {
-      const response = await apiClient.put('/user/profile', { nickname });
+      const nonce = Math.floor(Math.random() * 1000000);
+      const fingerprint = getDeviceId();
+      const payload = { nickname };
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+
+      const response = await apiClient.put('/user/profile', {
+        encrypted,
+        fingerprint,
+        nonce
+      });
       if (response.data.success) {
-        alert('昵称更新成功');
+        toast.success('昵称更新成功');
         const updatedInfo = { ...userInfo, nickname };
         localStorage.setItem('user_info', JSON.stringify(updatedInfo));
-        window.location.reload();
+        setTimeout(() => window.location.reload(), 1000);
       }
     } catch (error: any) {
-      alert(error.response?.data?.message || '更新失败');
+      toast.error(error.response?.data?.message || '更新失败');
     }
   };
 
@@ -68,18 +80,27 @@ export default function Profile() {
     }
 
     try {
-      const response = await apiClient.put('/user/password', {
+      const nonce = Math.floor(Math.random() * 1000000);
+      const fingerprint = getDeviceId();
+      const payload = {
         old_password: oldPassword,
         new_password: newPassword
+      };
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+
+      const response = await apiClient.put('/user/password', {
+        encrypted,
+        fingerprint,
+        nonce
       });
       if (response.data.success) {
-        alert('密码修改成功，请重新登录');
+        toast.success('密码修改成功，请重新登录');
         localStorage.removeItem('user_token');
         localStorage.removeItem('user_info');
-        window.location.href = '/user/login';
+        setTimeout(() => window.location.href = '/login', 1000);
       }
     } catch (error: any) {
-      alert(error.response?.data?.message || '修改失败');
+      toast.error(error.response?.data?.message || '修改失败');
     }
   };
 

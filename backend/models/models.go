@@ -6,6 +6,7 @@ import "time"
 type Application struct {
 	ID            int       `json:"id" db:"id"`
 	Email         string    `json:"email" db:"email"`
+	UserNickname  string    `json:"userNickname" db:"user_nickname"`
 	Reason        string    `json:"reason" db:"reason"`
 	Status        string    `json:"status" db:"status"` // pending, approved, rejected
 	DeviceID      string    `json:"deviceId" db:"device_id"`
@@ -69,12 +70,14 @@ type ChatMessage struct {
 	SenderType     string    `json:"senderType" db:"sender_type"` // admin, user
 	Content        string    `json:"message" db:"content"`        // 适配前端字段名 message
 	QuoteID        *int      `json:"quoteId" db:"quote_id"`
-	QuoteContent   string    `json:"quoteContent" db:"-"` // 辅助显示引用内容
+	QuoteContent   string    `json:"quoteContent" db:"-"`  // 辅助显示引用内容
+	QuoteUsername  string    `json:"quoteUsername" db:"-"` // 辅助显示被引用者用户名
 	IsPrivate      bool      `json:"isPrivate" db:"is_private"`
 	ReceiverID     *int      `json:"receiverId" db:"receiver_id"`
 	ReceiverType   string    `json:"receiverType" db:"receiver_type"` // admin, user
 	IsPinned       bool      `json:"isPinned" db:"is_pinned"`
 	IsFeatured     bool      `json:"isFeatured" db:"is_featured"`
+	Room           string    `json:"room" db:"room"` // global, audit
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 }
 

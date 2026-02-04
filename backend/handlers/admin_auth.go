@@ -332,6 +332,7 @@ func AdminLogout(c *gin.Context) {
 
 // GetMe 获取当前管理员信息
 func GetMe(c *gin.Context) {
+	id, _ := c.Get("admin_id")
 	username, _ := c.Get("admin_username")
 	role, _ := c.Get("admin_role")
 	permissions, _ := c.Get("admin_permissions")
@@ -339,6 +340,7 @@ func GetMe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
+			"id":          id,
 			"username":    username,
 			"role":        role,
 			"permissions": permissions,

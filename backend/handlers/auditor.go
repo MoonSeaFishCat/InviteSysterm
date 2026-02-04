@@ -48,12 +48,6 @@ func VoteOnApplication(c *gin.Context) {
 		return
 	}
 
-	// 更新管理员审核统计
-	_, _ = database.DB.Exec(
-		"UPDATE admins SET audit_count = audit_count + 1, last_audit_at = ?, updated_at = ? WHERE id = ?",
-		time.Now().Unix(), time.Now().Unix(), adminID,
-	)
-
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "投票成功"})
 }
 

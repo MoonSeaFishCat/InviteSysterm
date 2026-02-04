@@ -4,7 +4,7 @@ import Tickets from './Tickets';
 import Messages from './Messages';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, Button, Avatar, Divider, Chip } from "@heroui/react";
-import { FaUser, FaPaperPlane, FaTicketAlt, FaEnvelope, FaSignOutAlt, FaHome, FaBullhorn, FaTimes, FaMoon, FaSun, FaUserShield } from 'react-icons/fa';
+import { FaUser, FaPaperPlane, FaTicketAlt, FaEnvelope, FaSignOutAlt, FaHome, FaBullhorn, FaTimes, FaMoon, FaSun } from 'react-icons/fa';
 import Watermark from '../../components/Watermark';
 import { useState, useEffect } from 'react';
 import api from '../../api/client';
@@ -30,7 +30,7 @@ export default function UserDashboard() {
   const [dismissedAnnouncements, setDismissedAnnouncements] = useState<number[]>([]);
 
   const searchParams = new URLSearchParams(location.search);
-  const activeTab = (searchParams.get('tab') as 'profile' | 'applications' | 'tickets' | 'messages' | 'chat') || 'applications';
+  const activeTab = (searchParams.get('tab') as 'profile' | 'applications' | 'tickets' | 'messages') || 'applications';
 
   useEffect(() => {
     fetchAnnouncements();
@@ -68,14 +68,13 @@ export default function UserDashboard() {
       items: [
         { key: 'applications', label: '申请管理', icon: FaPaperPlane, description: '管理邀请码申请' },
         { key: 'tickets', label: '我的工单', icon: FaTicketAlt, description: '提交和查看工单' },
+        { key: 'messages', label: '站内信', icon: FaEnvelope, description: '查看系统通知' },
       ]
     },
     {
       label: '互动中心',
       items: [
-        { key: 'messages', label: '站内信', icon: FaEnvelope, description: '查看系统消息' },
         { key: 'global_chat', label: '交流空间', icon: FaBullhorn, description: '所有人可见' },
-        { key: 'chat', label: '私信管理员', icon: FaUserShield, description: '有问题找人工' },
       ]
     },
     {
@@ -196,9 +195,7 @@ export default function UserDashboard() {
                           className="justify-start mb-1"
                           startContent={<Icon />}
                           onPress={() => {
-                            if (item.key === 'chat') {
-                              navigate('/user/chat');
-                            } else if (item.key === 'global_chat') {
+                            if (item.key === 'global_chat') {
                               navigate('/user/chat/global');
                             } else {
                               navigate(`/user/center?tab=${item.key}`);

@@ -494,8 +494,8 @@ export default function Settings() {
               <p className="text-sm font-bold mb-2">默认审核员权限</p>
               <p className="text-tiny text-default-500 mb-3">自动创建的审核员将获得以下权限（多个权限用逗号分隔）</p>
               <Input
-                placeholder="例如: applications,tickets,messages"
-                value={settings.default_reviewer_permissions || 'applications,tickets,messages'}
+                placeholder="例如: applications,tickets"
+                value={settings.default_reviewer_permissions || 'applications,tickets'}
                 onValueChange={(val) => handleChange('default_reviewer_permissions', val)}
                 variant="bordered"
                 radius="lg"

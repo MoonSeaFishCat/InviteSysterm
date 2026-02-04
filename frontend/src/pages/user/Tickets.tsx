@@ -18,6 +18,8 @@ import {
 import { FaPlus, FaComments, FaCheckCircle, FaClock, FaPaperPlane } from 'react-icons/fa';
 import apiClient from '../../api/client';
 import toast from 'react-hot-toast';
+import { StarMoonSecurity } from '../../utils/security';
+import { getDeviceId } from '../../utils/device';
 
 interface Ticket {
   id: number;
@@ -78,7 +80,15 @@ export default function Tickets() {
     }
 
     try {
-      const response = await apiClient.post('/user/tickets', newTicket);
+      const nonce = Math.floor(Math.random() * 1000000);
+      const fingerprint = getDeviceId();
+      const encrypted = await StarMoonSecurity.encryptData(newTicket, fingerprint, nonce);
+
+      const response = await apiClient.post('/user/tickets', {
+        encrypted,
+        fingerprint,
+        nonce
+      });
       if (response.data.success) {
         toast.success('工单提交成功');
         onCreateClose();
@@ -111,7 +121,16 @@ export default function Tickets() {
 
     setReplyLoading(true);
     try {
-      await apiClient.post(`/user/tickets/${selectedTicket!.id}/reply`, { content: replyContent });
+      const nonce = Math.floor(Math.random() * 1000000);
+      const fingerprint = getDeviceId();
+      const payload = { content: replyContent };
+      const encrypted = await StarMoonSecurity.encryptData(payload, fingerprint, nonce);
+
+      await apiClient.post(`/user/tickets/${selectedTicket!.id}/reply`, {
+        encrypted,
+        fingerprint,
+        nonce
+      });
       toast.success('回复成功');
       setReplyContent('');
       // 刷新消息列表
