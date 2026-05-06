@@ -602,14 +602,14 @@ for i := 0; i < 7; i++ {
 - [React](https://react.dev/) - 用户界面库
 - [NextUI](https://nextui.org/) - 现代化 UI 组件库
 - [Tailwind CSS](https://tailwindcss.com/) - 实用优先的 CSS 框架
+- [linux.do](https://nextui.org/)  — 一个舒适的、涵盖所有科技和生活领域的中文社区，基于 Discourse 构建。尽管名字里有“Linux”，但它并不是一个Linux 教程网站。
 
 ---
 
 ## 📧 联系方式
 
-- **项目主页**: [GitHub Repository](https://github.com/yourusername/invite-system)
-- **问题反馈**: [Issues](https://github.com/yourusername/invite-system/issues)
-- **邮箱**: your-email@example.com
+- **项目主页**: [GitHub Repository](https://github.com/MoonSeaFishCat/InviteSysterm)
+- **问题反馈**: [Issues](https://github.com/MoonSeaFishCat/InviteSysterm/issues)
 
 ---
 
